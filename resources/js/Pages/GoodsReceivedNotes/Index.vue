@@ -138,9 +138,6 @@
     <GoodsReceivedNoteCreateModal
       v-model:open="isCreateModalOpen"
       :suppliers="suppliers"
-      :discounts="discounts"
-      :taxes="taxes"
-      :purchase-orders="purchaseOrders"
       :products="products"
       :available-products="availableProducts"
       :grnNumber="grnNumber"
@@ -174,7 +171,6 @@ defineProps({
   products: Array,
   goodsReceivedNotes: Object,
   suppliers: Array,
-  purchaseOrders: Array,
   availableProducts: Array,
   grnNumber: String,
   measurementUnits: Array,

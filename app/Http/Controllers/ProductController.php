@@ -10,7 +10,6 @@ use App\Models\MeasurementUnit;
 use App\Models\CompanyInformation;
 use App\Models\Discount;
 use App\Models\Tax;
-use App\Models\Unit;
 use App\Models\ActivityLog;
 use App\Models\ProductAvailableQuantity;
 use Illuminate\Http\Request;
@@ -147,7 +146,6 @@ class ProductController extends Controller
         $measurementUnits = MeasurementUnit::where('status', '!=', 0)->get();
         $discounts = Discount::all();
         $taxes = Tax::all();
-        $units = Unit::all();
 
         return Inertia::render('Products/Create', [
             'brands' => $brands,
@@ -173,7 +171,7 @@ class ProductController extends Controller
         'discount_id' => 'nullable|exists:discounts,id',
         'tax_id' => 'nullable|exists:taxes,id',
 
-        'shop_quantity_in_sales_unit' => 'required|numeric|min:0',
+        'shop_quantity_in_sales_unit' => 'nullable|numeric|min:0',
         'shop_low_stock_margin' => 'nullable|numeric|min:0',
 
         'store_quantity_in_purchase_unit' => 'nullable|numeric|min:0',
@@ -185,14 +183,14 @@ class ProductController extends Controller
 
         'return_product' => 'nullable|boolean',
 
-        'purchase_unit_id' => 'required|exists:measurement_units,id',
-        'sales_unit_id' => 'required|exists:measurement_units,id',
-        'transfer_unit_id' => 'required|exists:measurement_units,id',
+        'purchase_unit_id' => 'nullable|exists:measurement_units,id',
+        'sales_unit_id' => 'nullable|exists:measurement_units,id',
+        'transfer_unit_id' => 'nullable|exists:measurement_units,id',
 
         'purchase_to_transfer_rate' => 'nullable|numeric|min:0',
         'transfer_to_sales_rate' => 'nullable|numeric|min:0',
 
-        'status' => 'required|integer|in:0,1',
+        'status' => 'nullable|integer|in:0,1',
 
         'image' => 'nullable|image',
     ]);
@@ -209,6 +207,7 @@ class ProductController extends Controller
 
     // Return product convert to boolean
     $validated['return_product'] = $request->boolean('return_product');
+    $validated['status'] = $validated['status'] ?? 1;
 
     Product::create($validated);
 
@@ -236,7 +235,6 @@ class ProductController extends Controller
         $measurementUnits = MeasurementUnit::where('status', '!=', 0)->get();
         $discounts = Discount::all();
         $taxes = Tax::all();
-        $units = Unit::all();
 
         return Inertia::render('Products/Edit', [
             'product' => $product,
@@ -254,15 +252,17 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
+        $productId = $product->getKey();
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'barcode' => 'nullable|string|unique:products,barcode,' . $product->id,
+            'barcode' => 'nullable|string|unique:products,barcode,' . $productId,
             'brand_id' => 'nullable|exists:brands,id',
             'category_id' => 'nullable|exists:categories,id',
             'type_id' => 'nullable|exists:types,id',
             'discount_id' => 'nullable|exists:discounts,id',
             'tax_id' => 'nullable|exists:taxes,id',
-            'shop_quantity_in_sales_unit' => 'required|numeric|min:0',
+            'shop_quantity_in_sales_unit' => 'nullable|numeric|min:0',
             'shop_low_stock_margin' => 'nullable|numeric|min:0',
 
             'store_quantity_in_purchase_unit' => 'nullable|numeric|min:0',
@@ -272,31 +272,33 @@ class ProductController extends Controller
             'wholesale_price' => 'nullable|numeric|min:0',
             'retail_price' => 'nullable|numeric|min:0',
             'return_product' => 'nullable|boolean',
-            'purchase_unit_id' => 'required|exists:measurement_units,id',
-            'sales_unit_id' => 'required|exists:measurement_units,id',
-            'transfer_unit_id' => 'required|exists:measurement_units,id',
+            'purchase_unit_id' => 'nullable|exists:measurement_units,id',
+            'sales_unit_id' => 'nullable|exists:measurement_units,id',
+            'transfer_unit_id' => 'nullable|exists:measurement_units,id',
             'purchase_to_transfer_rate' => 'nullable|numeric|min:0',
             'transfer_to_sales_rate' => 'nullable|numeric|min:0',
-            'status' => 'required|integer|in:0,1',
+            'status' => 'nullable|integer|in:0,1',
             'image' => 'nullable|image',
         ]);
 
         // Generate barcode if product doesn't have one
-        if (empty($product->barcode) && empty($validated['barcode'])) {
+        if (empty($product->getAttribute('barcode')) && empty($validated['barcode'])) {
             $validated['barcode'] = $this->generateBarcode();
         }
 
         // Handle image upload
         if ($request->hasFile('image')) {
             // Delete old image if exists
-            if ($product->image) {
-                Storage::disk('public')->delete($product->image);
+            $existingImage = $product->getAttribute('image');
+            if ($existingImage) {
+                Storage::disk('public')->delete($existingImage);
             }
             $validated['image'] = $request->file('image')->store('products', 'public');
         }
 
         // Convert return_product to boolean
         $validated['return_product'] = $request->boolean('return_product');
+        $validated['status'] = $validated['status'] ?? $product->getAttribute('status') ?? 1;
 
         $product->update($validated);
 

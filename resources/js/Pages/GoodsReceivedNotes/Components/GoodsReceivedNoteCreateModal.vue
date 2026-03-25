@@ -81,19 +81,13 @@
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2"
-                >Purchase Order<span class="text-red-500">*</span></label
-              >
-              <select
-                v-model="form.purchase_order_request_id"
-                @change="loadPOData"
-                class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value="">Select PurchaseOrder</option>
-                <option v-for="po in filteredPurchaseOrders" :key="po.id" :value="po.id">
-                  {{ po.order_number }}
-                </option>
-              </select>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Batch Number</label>
+              <input
+                v-model="form.batch_number"
+                type="text"
+                readonly
+                class="w-full px-3 py-2 text-sm text-gray-800 bg-gray-100 border border-gray-300 rounded-lg focus:outline-none cursor-not-allowed font-medium"
+              />
             </div>
 
             <div>
@@ -106,15 +100,7 @@
               />
             </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Batch Number</label>
-              <input
-                v-model="form.batch_number"
-                type="text"
-                readonly
-                class="w-full px-3 py-2 text-sm text-gray-800 bg-gray-100 border border-gray-300 rounded-lg focus:outline-none cursor-not-allowed font-medium"
-              />
-            </div>
+            <div></div>
 
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2"
@@ -143,9 +129,18 @@
 
         <!-- PRODUCTS SECTION -->
         <div class="mb-4 bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-          <h3 class="mb-3 text-lg font-semibold text-blue-600 flex items-center gap-2">
-            📦 Products
-          </h3>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-semibold text-blue-600 flex items-center gap-2">
+              📦 Products
+            </h3>
+            <button
+              type="button"
+              @click="addProduct"
+              class="px-4 py-2 text-xs font-medium text-white bg-green-600 rounded-[5px] hover:bg-green-700 transition-all duration-200"
+            >
+              + Add Product
+            </button>
+          </div>
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
               <thead>
@@ -165,6 +160,9 @@
                   <th class="px-4 py-3 text-blue-600 font-semibold text-sm">
                     Total ({{ page.props.currency || "" }})
                   </th>
+                  <th class="px-4 py-3 text-blue-600 font-semibold text-sm text-center">
+                    Actions
+                  </th>
 
                 </tr>
               </thead>
@@ -175,11 +173,11 @@
                   :key="index"
                   class="border-b border-gray-200 hover:bg-gray-50 transition-colors duration-200"
                 >
-                  <!-- <td class="px-4 py-4">
+                  <td class="px-4 py-4">
                     <select
                       v-model.number="product.product_id"
                       @change="onProductSelect(index)"
-                      class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" disabled
+                      class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
                       <option :value="null">Select Product</option>
                       <option
@@ -190,10 +188,6 @@
                         {{ prod.name }}
                       </option>
                     </select>
-                  </td> -->
-
-                  <td class="px-4 py-4">
-                   {{ product.product_name }}
                   </td>
 
                   <td class="px-4 py-4">
@@ -222,7 +216,8 @@
                       type="number"
                       step="0.01"
                       min="0.01"
-                      class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" disabled
+                      @input="validateIssuedQty(product); calculateTotal(index)"
+                      class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                   </td>
 
@@ -232,7 +227,7 @@
                       type="number"
                       min="1"
                       step="1"
-                      @input="validateIssuedQty(product)"
+                      @input="validateIssuedQty(product); calculateTotal(index)"
                       class="w-full px-3 py-2 text-sm border rounded-lg"
                       :class="product.error ? 'border-red-500' : 'border-gray-300'"
                     />
@@ -271,6 +266,17 @@
                     <span class="font-semibold text-gray-900">
                       {{ formatNumber(product.total) }}
                     </span>
+                  </td>
+
+                  <td class="px-4 py-4 text-center">
+                    <button
+                      type="button"
+                      @click="removeProduct(index)"
+                      :disabled="products.length <= 1"
+                      class="px-4 py-2 text-xs font-medium text-white bg-red-600 rounded-[5px] hover:bg-red-700 disabled:opacity-50 transition-all duration-200"
+                    >
+                      Remove
+                    </button>
                   </td>
 
 
@@ -375,8 +381,6 @@ const props = defineProps({
   open: Boolean,
   suppliers: Array,
   measurementUnits: Array,
-
-  purchaseOrders: Array,
   availableProducts: Array,
   grnNumber: {
     type: String,
@@ -386,18 +390,31 @@ const props = defineProps({
 
 const emit = defineEmits(["update:open"]);
 
+const createEmptyProductRow = () => ({
+  product_id: null,
+  measurement_unit_id: "",
+  batch_number: "",
+  requested_quantity: 1,
+  issued_quantity: 1,
+  purchase_price: 0,
+  discount: 0,
+  unit: "N/A",
+  product_name: "",
+  total: 0,
+  error: null,
+});
+
 const form = ref({
   goods_received_note_no: props.grnNumber,
   supplier_id: "",
   goods_received_note_date: new Date().toISOString().split("T")[0],
-  purchase_order_request_id: "",
   batch_number: "",
   discount: 0,
   tax_total: 0,
   remarks: "",
 });
 
-const products = ref([]);
+const products = ref([createEmptyProductRow()]);
 
 const grandTotal = computed(() => {
   const productsTotal = products.value.reduce(
@@ -409,15 +426,6 @@ const grandTotal = computed(() => {
   const taxTotal = parseFloat(form.value.tax_total) || 0;
 
   return productsTotal - discount + taxTotal;
-});
-
-// Filter to show only approved purchase orders in the GRN dropdown
-const filteredPurchaseOrders = computed(() => {
-  const list = props.purchaseOrders || [];
-  return list.filter((po) => {
-    const status = (po.status || "").toString().toLowerCase();
-    return status === "approved" || status === "processing";
-  });
 });
 
 // Generate auto batch number in format: BATCH-YYYYMMDD-XXXX
@@ -444,64 +452,13 @@ const resetForm = () => {
     goods_received_note_no: props.grnNumber,
     supplier_id: "",
     goods_received_note_date: new Date().toISOString().split("T")[0],
-    purchase_order_request_id: "",
     batch_number: generateBatchNumber(),
     discount: 0,
     tax_total: 0,
     remarks: "",
   };
-  products.value = [];
+  products.value = [createEmptyProductRow()];
 };
-
-const loadPOData = async () => {
-  if (!form.value.purchase_order_request_id) {
-    products.value = [];
-    return;
-  }
-
-  try {
-    const response = await fetch(`/po/${form.value.purchase_order_request_id}/details`);
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "Failed to load PO details");
-    }
-
-    const poProducts = data.purchaseOrderProducts || [];
-
-    if (poProducts.length === 0) {
-      console.warn("No products found in this PO");
-      return;
-    }
-
-    // The backend now returns `requested_quantity` as the remaining amount
-    // (original requested - already issued). Initialize `issued_quantity` to 0
-    // so the user can enter the actual received amount for this GRN.
-    products.value = poProducts.map((item) => {
-      const remainingRequested = parseFloat(item.requested_quantity) || 0;
-      const purchasePrice = parseFloat(item.price) || 0;
-
-      return {
-        product_id: item.product_id,
-        measurement_unit_id: item.measurement_unit_id,
-        batch_number: "",
-        requested_quantity: remainingRequested,
-        // Start with 0 received for this GRN; user will input the issued_quantity
-        issued_quantity: 0,
-        purchase_price: purchasePrice,
-        discount: 0,
-        unit: item.measurement_unit || "",
-        product_name: item.name || "",
-        total: 0,
-      };
-    });
-  } catch (error) {
-    console.error("Failed to load PO data:", error);
-    alert("Failed to load Purchase Order details: " + error.message);
-  }
-};
-
-
 
 const onProductSelect = (index) => {
   const product = products.value[index];
@@ -510,15 +467,36 @@ const onProductSelect = (index) => {
   );
 
   if (selectedProduct) {
-    product.purchase_price = selectedProduct.price || 0;
+    product.purchase_price =
+      parseFloat(selectedProduct.purchase_price ?? selectedProduct.price) || 0;
     product.measurement_unit_id = selectedProduct.measurement_unit_id;
     product.batch_number = "";
+    product.product_name = selectedProduct.name || "";
     product.unit =
       selectedProduct.purchaseUnit?.name ||
-      selectedProduct.measurementUnit?.name ||
-      "N/A";
+      selectedProduct.measurement_unit?.name ||
+      (props.measurementUnits.find((u) => u.id === selectedProduct.measurement_unit_id)?.name || "N/A");
+
+    if (!product.requested_quantity || Number(product.requested_quantity) <= 0) {
+      product.requested_quantity = 1;
+    }
+    if (!product.issued_quantity || Number(product.issued_quantity) <= 0) {
+      product.issued_quantity = 1;
+    }
+
     calculateTotal(index);
+  } else {
+    products.value[index] = createEmptyProductRow();
   }
+};
+
+const addProduct = () => {
+  products.value.push(createEmptyProductRow());
+};
+
+const removeProduct = (index) => {
+  if (products.value.length <= 1) return;
+  products.value.splice(index, 1);
 };
 
 const calculateTotal = (index) => {
@@ -549,7 +527,28 @@ watch(
 );
 
 const submitForm = () => {
-  const subtotal = products.value.reduce(
+  const validProducts = products.value.filter(
+    (product) =>
+      product.product_id &&
+      Number(product.requested_quantity) > 0 &&
+      Number(product.issued_quantity) > 0
+  );
+
+  if (validProducts.length === 0) {
+    alert("Please add at least one product with quantity.");
+    return;
+  }
+
+  const hasInvalidIssuedQty = validProducts.some(
+    (product) => Number(product.issued_quantity) > Number(product.requested_quantity)
+  );
+
+  if (hasInvalidIssuedQty) {
+    alert("Issued quantity cannot exceed requested quantity.");
+    return;
+  }
+
+  const subtotal = validProducts.reduce(
     (sum, product) => sum + (parseFloat(product.total) || 0),
     0
   );
@@ -557,7 +556,7 @@ const submitForm = () => {
   const payload = {
     ...form.value,
     subtotal: subtotal,
-    products: products.value,
+    products: validProducts,
   };
 
   router.post(route("good-receive-notes.store"), payload, {
@@ -567,7 +566,6 @@ const submitForm = () => {
         grn_number: form.value.goods_received_note_no,
         grn_date: form.value.goods_received_note_date,
         supplier_id: form.value.supplier_id,
-        purchase_order_id: form.value.purchase_order_request_id,
         products_count: products.value.length,
       });
 

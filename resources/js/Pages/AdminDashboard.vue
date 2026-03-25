@@ -89,21 +89,11 @@ import { Head, Link } from '@inertiajs/vue3';
                 <h3 class="text-2xl font-bold text-white mb-4 pb-2 border-b border-green-600">
                     🛒 Purchasing & Stock
                 </h3>
-                <!-- 3-column grid for purchasing modules -->
+                <!-- Purchasing modules -->
                 <div class="grid gap-4 md:grid-cols-3">
-                    <!-- Purchase Orders (POR) Card -->
-                    <Link
-                        :href="route('purchase-order-requests.index')"
-                        class="group bg-gradient-to-br from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 p-6 rounded-lg text-white transition transform hover:scale-105 shadow-lg"
-                    >
-                        <div class="text-3xl mb-2">📋</div>
-                        <div class="font-semibold text-lg">Purchase Orders</div>
-                        <div class="text-sm text-green-200 group-hover:text-green-100">Create & manage PORs</div>
-                    </Link>
-
                     <!-- Goods Received Notes (GRN) Card -->
                     <Link
-                        :href="route('goods-received-notes.index')"
+                        :href="route('good-receive-notes.index')"
                         class="group bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 p-6 rounded-lg text-white transition transform hover:scale-105 shadow-lg"
                     >
                         <div class="text-3xl mb-2">📦</div>

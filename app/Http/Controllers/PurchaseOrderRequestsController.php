@@ -4,15 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\PurchaseOrderRequest;
 use App\Models\PurchaseOrderRequestProduct;
-use App\Models\MeasurementUnit;
-use App\Models\Product;
-use App\Models\Supplier;
-use App\Models\User;
 use App\Models\GoodsReceivedNoteProduct;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Inertia\Inertia;
 
 class PurchaseOrderRequestsController extends Controller
 {
@@ -23,50 +19,7 @@ class PurchaseOrderRequestsController extends Controller
      */
     public function index()
     {
-
-      $purchaseOrderRequests = PurchaseOrderRequest::with([
-        'por_products.product.purchaseUnit',
-        'supplier',
-        'user'
-    ])
-        ->withTrashed()  // Include soft-deleted (inactive) records
-        ->latest()
-        ->paginate(10);
-
-
-        // Load only low-stock products (store_quantity_in_purchase_unit below store_low_stock_margin)
-        $products = Product::where('status', '!=', 0)
-            ->where(function ($query) {
-                $query->whereNotNull('store_low_stock_margin')
-                    ->whereColumn('store_quantity_in_purchase_unit', '<', 'store_low_stock_margin');
-            })
-            ->with(['measurement_unit', 'purchaseUnit'])
-            ->get();
-
-        $allProducts = Product::where('status', '!=', 0)
-            ->with(['measurement_unit', 'purchaseUnit'])
-            ->get();
-
-        $measurementUnits = MeasurementUnit::orderBy('name')
-            ->get();
-
-        $users = User::orderBy('name')->get();
-
-        $suppliers = Supplier::where('status', '!=', 0)
-            ->orderBy('name')
-            ->get();
-
-        $orderNumber = $this->generateOrderNumber();
-
-        return Inertia::render('PurchaseOrderRequests/Index', [
-            'purchaseOrderRequests' => $purchaseOrderRequests,
-            'products' => $products,
-            'allProducts' => $allProducts,
-            'measurementUnits' => $measurementUnits,
-            'users' => $users,
-            'suppliers' => $suppliers,
-            'orderNumber' => $orderNumber
-        ]);
+        return redirect()->route('good-receive-notes.index');
     }
 
     /**
@@ -93,7 +46,9 @@ class PurchaseOrderRequestsController extends Controller
     try {
         // Determine status based on role
         // Admin PORs are auto-approved, non-admin PORs are pending
-        $status = (Auth::user()->role === 0) ? 'approved' : 'pending';
+        $currentUser = User::find(Auth::id());
+        $userRole = (int) ($currentUser?->getAttribute('role') ?? -1);
+        $status = ($userRole === 0) ? 'approved' : 'pending';
 
         $purchaseOrderRequest = PurchaseOrderRequest::create([
             'order_number' => $validated['order_number'],
@@ -106,7 +61,7 @@ class PurchaseOrderRequestsController extends Controller
 
         foreach ($validated['products'] as $productData) {
             PurchaseOrderRequestProduct::create([
-                'purchase_order_request_id' => $purchaseOrderRequest->id,
+                'purchase_order_request_id' => $purchaseOrderRequest->getKey(),
                 'product_id' => $productData['product_id'],
                 'requested_quantity' => $productData['requested_quantity'],
                 'measurement_unit_id' => $productData['measurement_unit_id'] ?? null,
@@ -144,7 +99,7 @@ class PurchaseOrderRequestsController extends Controller
         DB::beginTransaction();
 
         try {
-            $oldStatus = $purchaseOrderRequest->status;
+            $oldStatus = (string) ($purchaseOrderRequest->getAttribute('status') ?? 'pending');
             $purchaseOrderRequest->update(['status' => $request->status]);
 
             DB::commit();
@@ -166,9 +121,10 @@ class PurchaseOrderRequestsController extends Controller
    public function destroy($id)
 {
     $purchaseOrderRequest = PurchaseOrderRequest::findOrFail($id);
+    $currentStatus = strtolower((string) ($purchaseOrderRequest->getAttribute('status') ?? ''));
 
     // Allow delete only when status is ACTIVE
-    if (strtolower($purchaseOrderRequest->status ?? '') !== 'active') {
+    if ($currentStatus !== 'active') {
         return back()->withErrors([
             'error' => 'Only ACTIVE Purchase Order Requests can be deleted.'
         ]);
@@ -178,7 +134,7 @@ class PurchaseOrderRequestsController extends Controller
 
     try {
         // Mark inactive then soft delete
-        $purchaseOrderRequest->status = 'inactive';
+        $purchaseOrderRequest->setAttribute('status', 'inactive');
         $purchaseOrderRequest->save();
 
         $purchaseOrderRequest->delete();

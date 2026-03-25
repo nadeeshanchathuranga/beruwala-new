@@ -221,7 +221,6 @@
                 type="number"
                 step="0.01"
                 min="0"
-                readonly
                 class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="0.00"
               />
@@ -354,7 +353,7 @@
             <!-- Purchase Unit -->
             <div>
               <label class="block mb-2 text-sm font-medium text-gray-700"
-                >Purchase Unit<span class="text-red-500">*</span></label
+                >Purchase Unit</label
               >
               <div class="flex gap-2">
                 <select
@@ -398,7 +397,7 @@
             <!-- Transfer Unit -->
             <div>
               <label class="block mb-2 text-sm font-medium text-gray-700"
-                >Transfer Unit<span class="text-red-500">*</span></label
+                >Transfer Unit</label
               >
               <div class="flex gap-2">
                 <select
@@ -442,7 +441,7 @@
             <!-- Sales Unit -->
             <div>
               <label class="block mb-2 text-sm font-medium text-gray-700"
-                >Sales Unit<span class="text-red-500">*</span></label
+                >Sales Unit</label
               >
               <div class="flex gap-2">
                 <select
@@ -509,7 +508,7 @@
             <!-- Store Low Stock Margin -->
             <div>
               <label class="block mb-2 text-sm font-medium text-gray-700"
-                >Store Low Stock Alert <span class="text-red-500">*</span>
+                >Store Low Stock Alert
                 <span v-if="form.purchase_unit_id" class="blue-600">
                   ({{ purchaseUnitDisplayName }})
                 </span></label
@@ -551,7 +550,7 @@
             <!-- Shop Low Stock Margin -->
             <div>
               <label class="block mb-2 text-sm font-medium text-gray-700"
-                >Shop Low Stock Alert<span class="text-red-500">*</span>
+                >Shop Low Stock Alert
 
                 <span v-if="form.sales_unit_id" class="green-600">
                   ({{ getSalesUnitName(form.sales_unit_id) }})
@@ -581,7 +580,7 @@
             <!-- Purchase to Transfer Rate -->
             <div>
               <label class="block mb-2 text-sm font-medium text-gray-700">
-                Purchase → Transfer Rate<span class="text-red-500">*</span>
+                Purchase → Transfer Rate
                 <span
                   v-if="form.purchase_unit_id && form.transfer_unit_id"
                   class="text-purple-300"
@@ -596,7 +595,6 @@
                   step="0.01"
                   class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="1.00"
-                  required
                 />
               <span class="text-xs text-gray-600"
                 >How many transfer units in one purchase unit</span
@@ -606,7 +604,7 @@
             <!-- Transfer to Sales Rate -->
             <div>
               <label class="block mb-2 text-sm font-medium text-gray-700">
-                Transfer → Sales Rate <span class="text-red-500">*</span>
+                Transfer → Sales Rate
                 <span
                   v-if="form.transfer_unit_id && form.sales_unit_id"
                   class="text-purple-300"
@@ -621,7 +619,6 @@
                   step="0.01"
                   class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="1.00"
-                  required
                 />
               <span class="text-xs text-gray-600"
                 >How many sales units in one transfer unit</span
