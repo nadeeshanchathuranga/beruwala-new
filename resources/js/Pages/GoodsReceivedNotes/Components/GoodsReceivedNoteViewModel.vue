@@ -59,7 +59,7 @@
           <div class="flex flex-col gap-1">
             <span class="text-sm font-medium text-gray-600">Discount:</span>
             <span class="text-gray-900 font-semibold">{{
-              formatDiscount(grn.discount, grn.discount_type)
+              formatNumber(totalDiscountAmount)
             }}</span>
           </div>
           <div class="flex flex-col gap-1">
@@ -86,7 +86,7 @@
                 <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Product</th>
                 <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Qty</th>
                 <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Unit</th>
-                <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Discount</th>
+                <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Discount Amount</th>
                 <th class="px-4 py-3 text-blue-600 font-semibold text-sm">
                   Purchase Price ({{ page.props.currency || "" }})
                 </th>
@@ -126,11 +126,11 @@
         <div class="space-y-2">
           <div class="flex justify-end gap-4 pb-2 border-b border-gray-300">
             <span class="font-semibold text-gray-900">Subtotal:</span>
-            <span class="font-semibold text-gray-900">{{ formatNumber(grn.subtotal) }} ({{ page.props.currency || "" }})</span>
+            <span class="font-semibold text-gray-900">{{ formatNumber(displaySubtotal) }} ({{ page.props.currency || "" }})</span>
           </div>
           <div class="flex justify-end gap-4 pb-2 border-b border-gray-300">
             <span class="font-semibold text-red-600">Discount:</span>
-            <span class="font-semibold text-red-600">-{{ formatNumber(totalProductDiscount) }} ({{ page.props.currency || "" }})</span>
+            <span class="font-semibold text-red-600">-{{ formatNumber(totalDiscountAmount) }} ({{ page.props.currency || "" }})</span>
           </div>
           <div class="flex justify-end gap-4 pb-2 border-b border-gray-300">
             <span class="font-semibold text-green-600">Tax:</span>
@@ -159,24 +159,38 @@ const props = defineProps({
 
 const emit = defineEmits(["update:open"]);
 
-const floorToWhole = (value) => {
+const roundToWhole = (value) => {
   const numericValue = Number(value) || 0;
-  return Math.floor(numericValue);
+  return Math.round(numericValue);
 };
 
 const close = () => {
   emit("update:open", false);
 };
 
-const totalProductDiscount = computed(() => {
+const itemDiscountAmount = computed(() => {
+  const products = props.grn?.goods_received_note_products || [];
+  return products.reduce((sum, product) => sum + (parseFloat(product?.discount) || 0), 0);
+});
+
+const headerDiscountAmount = computed(() => {
   return parseFloat(props.grn?.discount) || 0;
 });
 
+const totalDiscountAmount = computed(() => {
+  return itemDiscountAmount.value + headerDiscountAmount.value;
+});
+
+const displaySubtotal = computed(() => {
+  const storedSubtotal = parseFloat(props.grn?.subtotal) || 0;
+  return storedSubtotal + itemDiscountAmount.value;
+});
+
 const grandTotal = computed(() => {
-  const subtotal = parseFloat(props.grn?.subtotal) || 0;
-  const discount = totalProductDiscount.value;
+  const subtotal = displaySubtotal.value;
+  const discount = totalDiscountAmount.value;
   const taxTotal = parseFloat(props.grn?.tax_total) || 0;
-  return floorToWhole(subtotal - discount + taxTotal);
+  return roundToWhole(subtotal - discount + taxTotal);
 });
 
 const formatDate = (date) => {
@@ -189,17 +203,10 @@ const formatDate = (date) => {
 };
 
 const formatNumber = (number) => {
-  return floorToWhole(number).toLocaleString("en-US", {
+  return roundToWhole(number).toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
-};
-
-const formatDiscount = (discount, discountType) => {
-  const formattedDiscount = formatNumber(discount);
-  return discountType === "percentage"
-    ? `${formattedDiscount} (%)`
-    : `${formattedDiscount}`;
 };
 
 const getStatusText = (status) => {

@@ -4,6 +4,17 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property string $invoice_no
+ * @property int|null $customer_id
+ * @property float $total_amount
+ * @property float $discount
+ * @property float $net_amount
+ * @property float $paid_amount
+ * @property float $balance
+ * @property string|null $sale_date
+ */
 class Sale extends Model
 {
    use HasFactory;
@@ -78,13 +89,15 @@ class Sale extends Model
         $totalReturned = $this->returns()
             ->where('status', SalesReturn::STATUS_APPROVED)
             ->get()
-            ->sum(function ($return) {
+            ->map(function ($return) {
                 if ($return->return_type == SalesReturn::TYPE_CASH_RETURN) {
                     return (float) ($return->refund_amount ?? 0);
                 }
-                // For product returns, sum the actual return product totals (already discounted)
-                return $return->products->sum(fn($p) => (float) ($p->total ?? 0));
-            });
+                return $return->products
+                    ->map(fn($p) => (float) ($p->total ?? 0))
+                    ->sum();
+            })
+            ->sum();
 
         return max(0, $this->net_amount - $totalReturned);
     }
@@ -134,7 +147,9 @@ class Sale extends Model
             if ($return->return_type == SalesReturn::TYPE_CASH_RETURN) {
                 return (float) ($return->refund_amount ?? 0);
             }
-            return $return->products->sum(fn($p) => (float) ($p->total ?? 0));
+            return $return->products
+                ->map(fn($p) => (float) ($p->total ?? 0))
+                ->sum();
         });
 
         return [

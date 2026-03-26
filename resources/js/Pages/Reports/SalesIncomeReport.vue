@@ -128,7 +128,7 @@
                     </td>
                     <td class="px-4 py-3 text-center">
                       <span
-                        class="px-3 py-1 rounded-[5px] text-white text-sm font-medium"
+                        class="inline-flex items-center justify-center w-28 h-9 rounded-[5px] text-white text-sm font-medium"
                         :class="getPaymentTypeColor(income.payment_type)"
                       >
                         {{ income.payment_type_name }}
@@ -166,7 +166,7 @@
                     </td>
                     <td class="px-4 py-3 text-center">
                       <span
-                        class="px-3 py-1 rounded-[5px] text-white text-sm font-medium"
+                        class="inline-flex items-center justify-center w-28 h-9 rounded-[5px] text-white text-sm font-medium"
                         :class="getPaymentTypeColor(income.payment_type)"
                       >
                         {{ income.payment_type_name }}
@@ -327,7 +327,8 @@
 <script setup>
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout.vue";
 import { Head, router, usePage } from "@inertiajs/vue3";
-import { ref, computed } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import axios from "axios";
 import { logActivity } from "@/composables/useActivityLog";
 import { useDashboardNavigation } from "@/composables/useDashboardNavigation";
 
@@ -359,6 +360,8 @@ const props = defineProps({
 
 const startDate = ref(props.startDate);
 const endDate = ref(props.endDate);
+const livePaymentMethodTotals = ref(props.paymentMethodTotals || []);
+let paymentTotalsIntervalId = null;
 const calculatedTotalIncome = computed(() => {
   if (!props.salesIncomeList.data || props.salesIncomeList.data.length === 0) {
     return '0.00';
@@ -397,27 +400,41 @@ const calculatedNetIncome = computed(() => {
 });
 
 const normalizedPaymentTotals = computed(() => {
-  const baseData = props.paymentMethodTotals && props.paymentMethodTotals.length > 0
-    ? props.paymentMethodTotals.map((item) => ({
-        payment_type: Number(item.payment_type),
-        label: item.label,
-        total: Number(item.total || 0),
-      }))
-    : [
+  const sourceTotals = (livePaymentMethodTotals.value && livePaymentMethodTotals.value.length > 0)
+    ? livePaymentMethodTotals.value
+    : props.paymentMethodTotals;
+
+  let cashTotal = 0;
+  let cardTotal = 0;
+
+  if (sourceTotals && sourceTotals.length > 0) {
+    sourceTotals.forEach((item) => {
+      const paymentType = Number(item.payment_type);
+      const total = Number(item.total || 0);
+
+      if (paymentType === 0) {
+        cashTotal += total;
+      }
+
+      if (paymentType === 1) {
+        cardTotal += total;
+      }
+    });
+  } else {
+    cashTotal = Number(props.totalCash || 0);
+    cardTotal = Number(props.totalCard || 0);
+  }
+
+  const baseData = [
     {
       payment_type: 0,
       label: "Cash",
-      total: Number(props.totalCash || 0),
+      total: cashTotal,
     },
     {
       payment_type: 1,
       label: "Card",
-      total: Number(props.totalCard || 0),
-    },
-    {
-      payment_type: 2,
-      label: "Credit",
-      total: 0,
+      total: cardTotal,
     },
   ];
 
@@ -459,10 +476,45 @@ const getPaymentStrokeColor = (type) => {
   const colors = {
     0: "#22c55e",
     1: "#3b82f6",
-    2: "#f59e0b",
   };
   return colors[type] || "#6b7280";
 };
+
+const fetchLatestPaymentTotals = async () => {
+  try {
+    const response = await axios.get(route("reports.sales-income.totals"), {
+      params: {
+        start_date: startDate.value,
+        end_date: endDate.value,
+      },
+    });
+
+    if (response?.data?.paymentMethodTotals) {
+      livePaymentMethodTotals.value = response.data.paymentMethodTotals;
+    }
+  } catch (error) {
+    console.error("Failed to refresh sales-income chart totals", error);
+  }
+};
+
+const handleVisibilityChange = () => {
+  if (document.visibilityState === "visible") {
+    fetchLatestPaymentTotals();
+  }
+};
+
+onMounted(() => {
+  fetchLatestPaymentTotals();
+  paymentTotalsIntervalId = window.setInterval(fetchLatestPaymentTotals, 5000);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+});
+
+onBeforeUnmount(() => {
+  if (paymentTotalsIntervalId) {
+    window.clearInterval(paymentTotalsIntervalId);
+  }
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+});
 
 const filterReports = () => {
   router.get(

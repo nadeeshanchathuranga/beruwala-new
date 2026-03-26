@@ -17,6 +17,7 @@ class Expense extends Model
         'remark',
         'expense_date',
         'payment_type',
+        'card_type',
         'user_id',
         'supplier_id',
         'reference',
@@ -26,6 +27,7 @@ class Expense extends Model
         'expense_date' => 'date',
         'amount' => 'decimal:2',
         'payment_type' => 'integer',
+        'card_type' => 'string',
     ];
 
     // Relationship: Expense belongs to User
@@ -42,9 +44,22 @@ class Expense extends Model
 
     public function getPaymentTypeNameAttribute()
     {
+        if ((int) $this->payment_type === 1) {
+            $resolvedCardType = strtolower((string) ($this->card_type ?? ''));
+
+            if ($resolvedCardType === 'visa') {
+                return 'Card (Visa)';
+            }
+
+            if ($resolvedCardType === 'mastercard') {
+                return 'Card (MasterCard)';
+            }
+
+            return 'Card';
+        }
+
         $types = [
             0 => 'Cash',
-            1 => 'Card',
             2 => 'Cheque',
            
         ];

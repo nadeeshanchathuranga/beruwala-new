@@ -25,7 +25,6 @@ use App\Http\Controllers\SaleController;
 use App\Http\Controllers\QuotationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ReturnController;
-use App\Http\Controllers\CompanyInformationController;
 use App\Http\Controllers\AppSettingController;
 use App\Http\Controllers\SmtpSettingController;
 use App\Http\Controllers\GoodReceiveNoteReturnController;
@@ -345,6 +344,7 @@ Route::middleware(['auth', 'role:0,1,2,3'])->group(function () {
 
         // Order History Report - Sales income and returns transactions
         Route::get('/sales-income', [ReportController::class, 'salesIncomeReport'])->name('sales-income');
+        Route::get('/sales-income/totals', [ReportController::class, 'salesIncomeTotals'])->name('sales-income.totals');
 
         // Sync Report - Sync activity logs
         Route::get('/sync', [\App\Http\Controllers\SyncReportController::class, 'index'])->name('sync');

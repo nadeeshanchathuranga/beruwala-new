@@ -24,7 +24,7 @@ class ExpensesReportExport implements FromCollection, WithHeadings, WithStyles
     public function collection()
     {
         return Expense::with(['user:id,name', 'supplier:id,name'])
-            ->select('id', 'title', 'amount', 'remark', 'expense_date', 'payment_type', 'user_id', 'supplier_id', 'reference')
+            ->select('id', 'title', 'amount', 'remark', 'expense_date', 'payment_type', 'card_type', 'user_id', 'supplier_id', 'reference')
             ->whereBetween('expense_date', [$this->startDate, $this->endDate])
             ->when($this->supplierId, function($query) {
                 $query->where('supplier_id', $this->supplierId);
@@ -32,13 +32,12 @@ class ExpensesReportExport implements FromCollection, WithHeadings, WithStyles
             ->orderBy('expense_date', 'desc')
             ->get()
             ->map(function ($item) {
-                $paymentTypes = [0 => 'Cash', 1 => 'Card', 2 => 'Cheque'];
                 return [
                     'Date' => $item->expense_date,
                     'Title' => $item->title,
                     'Supplier' => $item->supplier->name ?? 'N/A',
                     'Amount' => number_format($item->amount, 2),
-                    'Payment Type' => $paymentTypes[$item->payment_type] ?? 'Unknown',
+                    'Payment Type' => $this->getExpensePaymentTypeName($item->payment_type, $item->card_type),
                     'Reference' => $item->reference ?? '-',
                     'Remark' => $item->remark ?? '-',
                     'User' => $item->user->name ?? 'N/A',
@@ -74,5 +73,32 @@ class ExpensesReportExport implements FromCollection, WithHeadings, WithStyles
         }
 
         return [];
+    }
+
+    private function getExpensePaymentTypeName($paymentType, $cardType = null): string
+    {
+        $paymentType = (int) $paymentType;
+
+        if ($paymentType === 1) {
+            $resolvedCardType = strtolower((string) $cardType);
+
+            if ($resolvedCardType === 'visa') {
+                return 'Card (Visa)';
+            }
+
+            if ($resolvedCardType === 'mastercard') {
+                return 'Card (MasterCard)';
+            }
+
+            return 'Card';
+        }
+
+        $paymentTypes = [
+            0 => 'Cash',
+            2 => 'Cheque',
+            3 => 'Bank Transfer',
+        ];
+
+        return $paymentTypes[$paymentType] ?? 'Unknown';
     }
 }

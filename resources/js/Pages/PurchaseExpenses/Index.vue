@@ -27,6 +27,7 @@
                 <th class="px-6 py-4 text-blue-600 font-semibold text-sm">#</th>
                 <th class="px-6 py-4 text-blue-600 font-semibold text-sm">Date</th>
                 <th class="px-6 py-4 text-blue-600 font-semibold text-sm">Supplier</th>
+                <th class="px-6 py-4 text-blue-600 font-semibold text-sm">Due Date</th>
                 <th class="px-6 py-4 text-blue-600 font-semibold text-sm">
                   Amount ({{ page.props.currency }})
                 </th>
@@ -62,6 +63,9 @@
                   }}
                 </td>
                 <td class="px-6 py-4 text-gray-900">
+                  {{ formatDate(expense?.supplier?.due_date) }}
+                </td>
+                <td class="px-6 py-4 text-gray-900">
                   {{ page.props.currency }} {{ formatAmount(expense.amount) }}
                 </td>
                 <td class="px-6 py-4">
@@ -77,7 +81,7 @@
                         expense.payment_type == 3,
                     }"
                   >
-                    {{ getPaymentTypeName(expense.payment_type) }}
+                    {{ getPaymentTypeName(expense) }}
                   </span>
                 </td>
                 <td class="px-6 py-4 text-gray-900">{{ expense.reference || "-" }}</td>
@@ -92,7 +96,7 @@
                 </td>
               </tr>
               <tr v-if="!expenses.data || expenses.data.length === 0">
-                <td colspan="8" class="px-6 py-8 text-center text-gray-500 font-medium">
+                <td colspan="9" class="px-6 py-8 text-center text-gray-500 font-medium">
                   No expenses found
                 </td>
               </tr>
@@ -194,6 +198,13 @@ const showCreateModal = ref(false);
 const showViewModal = ref(false);
 const selectedExpense = ref(null);
 const supplierData = ref({
+  supplier_id: null,
+  supplier_name: '',
+  supplier_due_date: null,
+  transaction_due_date: null,
+  grn_id: null,
+  grn_no: null,
+  grn_date: null,
   total_amount: 0,
   paid: 0,
   balance: 0,
@@ -214,6 +225,13 @@ const closeCreateModal = () => {
   showCreateModal.value = false;
   // Reset supplier data when closing
   supplierData.value = {
+    supplier_id: null,
+    supplier_name: '',
+    supplier_due_date: null,
+    transaction_due_date: null,
+    grn_id: null,
+    grn_no: null,
+    grn_date: null,
     total_amount: 0,
     paid: 0,
     balance: 0,
@@ -294,10 +312,24 @@ const formatAmount = (amount) => {
  * @param {number} type - Payment type ID (0=Cash, 1=Card, 2=Cheque)
  * @returns {string} Payment type name
  */
-const getPaymentTypeName = (type) => {
+const getPaymentTypeName = (expense) => {
+  const type = Number(expense?.payment_type);
+  const cardType = (expense?.card_type || '').toLowerCase();
+
+  if (type === 1) {
+    if (cardType === 'visa') {
+      return 'Card (Visa)';
+    }
+
+    if (cardType === 'mastercard') {
+      return 'Card (MasterCard)';
+    }
+
+    return 'Card';
+  }
+
   const types = {
     0: "Cash",
-    1: "Card",
     2: "Cheque",
   };
   return types[type] || "Unknown";

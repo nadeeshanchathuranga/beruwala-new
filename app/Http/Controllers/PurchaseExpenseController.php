@@ -14,7 +14,10 @@ class PurchaseExpenseController extends Controller
 {
     public function index()
     {
-        $expenses = Expense::with(['user', 'supplier'])
+        $expenses = Expense::with([
+            'user',
+            'supplier:id,name,due_date',
+        ])
             ->orderBy('expense_date', 'desc')
             ->paginate(10);
 
@@ -38,10 +41,21 @@ class PurchaseExpenseController extends Controller
             'amount' => 'required|numeric|min:0',
             'expense_date' => 'required|date',
             'payment_type' => 'required|integer|in:0,1,2,3',
+            'card_type' => 'nullable|in:visa,mastercard',
             'supplier_id' => 'nullable|exists:suppliers,id',
             'reference' => 'required_if:payment_type,1,3|nullable|string|max:255',
             'remark' => 'nullable|string',
         ]);
+
+        if ((int) ($validated['payment_type'] ?? -1) === 1 && empty($validated['card_type'])) {
+            return back()
+                ->withErrors(['card_type' => 'Card type is required for card payments.'])
+                ->withInput();
+        }
+
+        if ((int) ($validated['payment_type'] ?? -1) !== 1) {
+            $validated['card_type'] = null;
+        }
 
         // Ensure a title exists to satisfy DB constraint
         $validated['title'] = $validated['title'] ?? 'Purchase Expense';
@@ -60,9 +74,20 @@ class PurchaseExpenseController extends Controller
             'amount' => 'required|numeric|min:0',
             'expense_date' => 'required|date',
             'payment_type' => 'required|integer|in:0,1,2,3',
+            'card_type' => 'nullable|in:visa,mastercard',
             'reference' => 'required_if:payment_type,1,3|nullable|string|max:255',
             'remark' => 'nullable|string',
         ]);
+
+        if ((int) ($validated['payment_type'] ?? -1) === 1 && empty($validated['card_type'])) {
+            return back()
+                ->withErrors(['card_type' => 'Card type is required for card payments.'])
+                ->withInput();
+        }
+
+        if ((int) ($validated['payment_type'] ?? -1) !== 1) {
+            $validated['card_type'] = null;
+        }
 
         $validated['title'] = $validated['title'] ?? $purchaseExpense->title ?? 'Purchase Expense';
 
@@ -83,6 +108,13 @@ class PurchaseExpenseController extends Controller
     public function getSupplierData(Request $request)
     {
         $supplierId = $request->input('supplier_id');
+        $supplier = Supplier::select('id', 'name', 'due_date')->find($supplierId);
+
+        $latestGrn = DB::table('goods_received_notes')
+            ->where('supplier_id', $supplierId)
+            ->orderByDesc('goods_received_note_date')
+            ->orderByDesc('id')
+            ->first(['id', 'goods_received_note_no', 'goods_received_note_date']);
 
         // Calculate total amount from GRN products
         $totalAmount = DB::table('goods_received_notes_products')
@@ -104,6 +136,13 @@ class PurchaseExpenseController extends Controller
         $balance = $totalAmount - $paid;
 
         return response()->json([
+            'supplier_id' => $supplier?->id,
+            'supplier_name' => $supplier?->name,
+            'supplier_due_date' => optional($supplier?->due_date)->format('Y-m-d'),
+            'transaction_due_date' => optional($supplier?->due_date)->format('Y-m-d'),
+            'grn_id' => $latestGrn?->id,
+            'grn_no' => $latestGrn?->goods_received_note_no,
+            'grn_date' => $latestGrn?->goods_received_note_date,
             'total_amount' => number_format($totalAmount, 2, '.', ''),
             'paid' => number_format($paid, 2, '.', ''),
             'balance' => number_format($balance, 2, '.', ''),

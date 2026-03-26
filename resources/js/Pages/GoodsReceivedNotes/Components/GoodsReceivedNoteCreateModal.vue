@@ -172,7 +172,7 @@
                   <th class="px-4 py-3 text-blue-600 font-semibold text-sm">
                     Purchase Price ({{ page.props.currency || "" }})<span class="text-red-500">*</span>
                   </th>
-                  <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Discount</th>
+                  <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Discount (%)</th>
                   <th class="px-4 py-3 text-blue-600 font-semibold text-sm">
                     Total ({{ page.props.currency || "" }})
                   </th>
@@ -269,14 +269,23 @@
                   </td>
 
                   <td class="px-4 py-4">
-                    <input
-                      v-model.number="product.discount"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      @input="calculateTotal(index)"
-                      class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                    <div class="space-y-1">
+                      <div class="relative">
+                        <input
+                          v-model.number="product.discount_percentage"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          @input="calculateTotal(index)"
+                          class="w-full pr-8 px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <span class="absolute inset-y-0 right-3 flex items-center text-xs text-gray-500">%</span>
+                      </div>
+                      <p class="text-xs text-gray-500">
+                        Amount: {{ formatNumber(product.discount) }} {{ page.props.currency || "" }}
+                      </p>
+                    </div>
                   </td>
 
                   <td class="px-4 py-4">
@@ -318,7 +327,7 @@
                     Subtotal:
                   </td>
                   <td class="px-4 py-3 font-bold text-gray-900">
-                    {{ formatNumber(products.reduce((sum, p) => sum + (parseFloat(p.total) || 0), 0)) }} ({{ page.props.currency || "" }})
+                    {{ formatNumber(productsGrossTotal) }} ({{ page.props.currency || "" }})
                   </td>
                   <td></td>
                 </tr>
@@ -330,7 +339,7 @@
                     Discount ({{ form.discount_type === 'percentage' ? '%' : (page.props.currency || '') }}):
                   </td>
                   <td class="px-4 py-3 font-semibold text-red-600">
-                    -{{ formatNumber(calculateEffectiveDiscount(products.reduce((sum, p) => sum + (parseFloat(p.total) || 0), 0))) }} ({{ page.props.currency || "" }})
+                    -{{ formatNumber(productsDiscountTotal + headerDiscountAmount) }} ({{ page.props.currency || "" }})
                   </td>
                   <td></td>
                 </tr>
@@ -414,6 +423,7 @@ const createEmptyProductRow = () => ({
   requested_quantity: 1,
   issued_quantity: 1,
   purchase_price: 0,
+  discount_percentage: 0,
   discount: 0,
   unit: "N/A",
   product_name: "",
@@ -435,31 +445,44 @@ const form = ref({
 
 const products = ref([createEmptyProductRow()]);
 
-const floorToWhole = (value) => {
+const roundToWhole = (value) => {
   const numericValue = Number(value) || 0;
-  return Math.floor(numericValue);
+  return Math.round(numericValue);
 };
 
+const productsGrossTotal = computed(() => {
+  return products.value.reduce((sum, product) => {
+    const qty = parseFloat(product.issued_quantity ?? product.requested_quantity) || 0;
+    const price = parseFloat(product.purchase_price) || 0;
+    return sum + qty * price;
+  }, 0);
+});
+
+const productsDiscountTotal = computed(() => {
+  return products.value.reduce((sum, product) => sum + (parseFloat(product.discount) || 0), 0);
+});
+
+const productsNetTotal = computed(() => {
+  return roundToWhole(productsGrossTotal.value - productsDiscountTotal.value);
+});
+
+const headerDiscountAmount = computed(() => {
+  return calculateEffectiveDiscount(productsNetTotal.value);
+});
+
 const grandTotal = computed(() => {
-  const productsTotal = products.value.reduce(
-    (sum, product) => sum + (parseFloat(product.total) || 0),
-    0
-  );
-
-  const discount = calculateEffectiveDiscount(productsTotal);
   const taxTotal = parseFloat(form.value.tax_total) || 0;
-
-  return floorToWhole(productsTotal - discount + taxTotal);
+  return roundToWhole(productsNetTotal.value - headerDiscountAmount.value + taxTotal);
 });
 
 const calculateEffectiveDiscount = (productsTotal) => {
   const discountValue = parseFloat(form.value.discount) || 0;
 
   if (form.value.discount_type === "percentage") {
-    return floorToWhole((productsTotal * discountValue) / 100);
+    return roundToWhole((productsTotal * discountValue) / 100);
   }
 
-  return floorToWhole(discountValue);
+  return roundToWhole(discountValue);
 };
 
 // Generate auto batch number in format: BATCH-YYYYMMDD-XXXX
@@ -554,13 +577,15 @@ const calculateTotal = (index) => {
   // Use issued_quantity for GRN line totals (actual received amount), fallback to requested_quantity
   const qty = parseFloat(p.issued_quantity ?? p.requested_quantity) || 0;
   const price = parseFloat(p.purchase_price) || 0;
-  const discount = parseFloat(p.discount) || 0;
+  const discountPercentage = Math.min(100, Math.max(0, parseFloat(p.discount_percentage) || 0));
+  const discountAmount = roundToWhole((qty * price * discountPercentage) / 100);
+  p.discount = discountAmount;
 
-  p.total = floorToWhole(qty * price - discount);
+  p.total = roundToWhole(qty * price - discountAmount);
 };
 
 const formatNumber = (number) => {
-  return floorToWhole(number).toLocaleString("en-US", {
+  return roundToWhole(number).toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
@@ -611,8 +636,12 @@ const submitForm = () => {
 
   const payload = {
     ...form.value,
-    subtotal: floorToWhole(subtotal),
-    products: validProducts,
+    subtotal: roundToWhole(subtotal),
+    products: validProducts.map((product) => ({
+      ...product,
+      discount_percentage: parseFloat(product.discount_percentage || 0),
+      discount: parseFloat(product.discount || 0),
+    })),
   };
 
   router.post(route("good-receive-notes.store"), payload, {

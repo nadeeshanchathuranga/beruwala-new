@@ -12,6 +12,7 @@ use App\Models\Discount;
 use App\Models\Tax;
 use App\Models\ActivityLog;
 use App\Models\ProductAvailableQuantity;
+use App\Models\GoodsReceivedNoteProduct;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
@@ -405,14 +406,14 @@ class ProductController extends Controller
 
     /**
      * Get purchase price using FIFO (First In First Out) method
-     * Returns the purchase price from the oldest GRN that has available quantity for the product
+     * Returns the per-piece unit cost from the oldest GRN that has available quantity for the product
      * 
      * @param int $productId - The product ID
-     * @return float|null - The FIFO purchase price or null if no stock available
+     * @return float|null - The FIFO unit cost price or null if no stock available
      */
     public function getFifoPurchasePrice($productId)
     {
-        $grnProduct = \App\Models\GoodsReceivedNoteProduct::with('grn')
+        $grnProduct = GoodsReceivedNoteProduct::with(['grn', 'product:id,purchase_to_transfer_rate,transfer_to_sales_rate'])
             ->where('product_id', $productId)
             ->whereHas('grn', function ($query) {
                 $query->where('status', '!=', 0); // Only active GRNs
@@ -420,24 +421,65 @@ class ProductController extends Controller
             ->orderBy('created_at', 'asc') // Oldest first
             ->first();
 
-        return $grnProduct ? $grnProduct->purchase_price : null;
+        if (!$grnProduct || !$grnProduct->product) {
+            return null;
+        }
+
+        return $this->calculateUnitCostPrice($grnProduct, $grnProduct->product);
     }
 
     /**
      * Get purchase price by batch number
-     * Returns the purchase price for a specific product-batch combination
+     * Returns the per-piece unit cost for a specific product-batch combination
      * 
      * @param int $productId - The product ID
      * @param string $batchNumber - The batch number (e.g., BATCH-20260120-5432)
-     * @return float|null - The purchase price for that batch or null if not found
+     * @return float|null - The unit cost price for that batch or null if not found
      */
     public function getPurchasePriceByBatch($productId, $batchNumber)
     {
-        $grnProduct = \App\Models\GoodsReceivedNoteProduct::where('product_id', $productId)
+        $grnProduct = GoodsReceivedNoteProduct::with(['grn', 'product:id,purchase_to_transfer_rate,transfer_to_sales_rate'])
+            ->where('product_id', $productId)
             ->where('batch_number', $batchNumber)
+            ->whereHas('grn', function ($query) {
+                $query->where('status', '!=', 0); // Only active GRNs
+            })
             ->first();
 
-        return $grnProduct ? $grnProduct->purchase_price : null;
+        if (!$grnProduct || !$grnProduct->product) {
+            return null;
+        }
+
+        return $this->calculateUnitCostPrice($grnProduct, $grnProduct->product);
+    }
+
+    /**
+     * Calculate per-piece unit cost from a GRN line using:
+     * unit_cost = total_cost / total_units
+     */
+    private function calculateUnitCostPrice(GoodsReceivedNoteProduct $grnProduct, Product $product): ?float
+    {
+        $quantity = (float) ($grnProduct->quantity ?? 0);
+        if ($quantity <= 0) {
+            return null;
+        }
+
+        $purchaseToTransferRate = (float) ($product->purchase_to_transfer_rate ?? 1);
+        $transferToSalesRate = (float) ($product->transfer_to_sales_rate ?? 1);
+        $purchaseToTransferRate = $purchaseToTransferRate > 0 ? $purchaseToTransferRate : 1.0;
+        $transferToSalesRate = $transferToSalesRate > 0 ? $transferToSalesRate : 1.0;
+
+        $totalUnits = $quantity * $purchaseToTransferRate * $transferToSalesRate;
+        if ($totalUnits <= 0) {
+            return null;
+        }
+
+        $lineTotal = is_numeric($grnProduct->total) ? (float) $grnProduct->total : 0.0;
+        if ($lineTotal <= 0) {
+            $lineTotal = ((float) ($grnProduct->purchase_price ?? 0)) * $quantity;
+        }
+
+        return round($lineTotal / $totalUnits, 2);
     }
 
     /**
@@ -456,17 +498,19 @@ class ProductController extends Controller
         if (!$purchasePrice) {
             return response()->json([
                 'success' => false,
-                'message' => 'No purchase price found for this product-batch combination',
+                'message' => 'No unit cost price found for this product-batch combination',
                 'purchase_price' => null,
+                'unit_cost_price' => null,
             ], 404);
         }
 
         return response()->json([
             'success' => true,
             'purchase_price' => $purchasePrice,
+            'unit_cost_price' => $purchasePrice,
             'batch_number' => $validated['batch_number'],
             'source' => 'Batch Tracking',
-            'message' => 'Purchase price fetched from batch record',
+            'message' => 'Unit cost price fetched from batch record',
         ]);
     }
 
@@ -474,18 +518,15 @@ class ProductController extends Controller
      * API endpoint to get FIFO purchase price for a product
      * Used by frontend to auto-populate purchase price field
      */
-    public function getFifoPricingInfo(Request $request)
+    public function getFifoPricingInfo($productId)
     {
-        $validated = $request->validate([
-            'product_id' => 'required|exists:products,id',
-        ]);
-
-        $fifoPurchasePrice = $this->getFifoPurchasePrice($validated['product_id']);
+        $fifoPurchasePrice = $this->getFifoPurchasePrice($productId);
 
         return response()->json([
             'purchase_price' => $fifoPurchasePrice,
+            'unit_cost_price' => $fifoPurchasePrice,
             'source' => 'FIFO',
-            'message' => $fifoPurchasePrice ? 'Price fetched from oldest GRN' : 'No stock available in GRN',
+            'message' => $fifoPurchasePrice ? 'Unit cost price fetched from oldest GRN' : 'No stock available in GRN',
         ]);
     }
 }

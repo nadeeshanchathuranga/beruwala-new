@@ -140,11 +140,11 @@
           </h3>
           <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             <div class="p-3 bg-white rounded-lg border border-gray-200">
-              <p class="text-xs text-gray-600">Purchase Price</p>
+              <p class="text-xs text-gray-600">Unit Cost Price (per piece)</p>
               <p class="text-base font-bold text-green-600">
-                {{ formatPrice(fetchedBatchPrice || product?.purchase_price) }}
+                {{ formatPrice(displayedUnitCostPrice) }}
               </p>
-              <p v-if="fetchedBatchPrice" class="text-xs text-gray-500 mt-1">
+              <p v-if="fetchedUnitCostPrice !== null" class="text-xs text-gray-500 mt-1">
                 (From goods received note)
               </p>
             </div>
@@ -696,14 +696,35 @@ const storeQtyInPurchase = computed(() => {
 });
 
 /**
- * Fetch purchase price from goods_received_notes_products table
+ * Fetch per-piece unit cost price from goods_received_notes_products table
  * based on product_id and batch_number
  */
-const fetchedBatchPrice = ref(null);
+const fetchedUnitCostPrice = ref(null);
+
+const fallbackUnitCostPrice = computed(() => {
+  const purchasePrice = Number(props.product?.purchase_price);
+  const purchaseToTransferRate = Number(props.product?.purchase_to_transfer_rate) || 1;
+  const transferToSalesRate = Number(props.product?.transfer_to_sales_rate) || 1;
+  const divisor = purchaseToTransferRate * transferToSalesRate;
+
+  if (!Number.isFinite(purchasePrice) || purchasePrice <= 0 || !Number.isFinite(divisor) || divisor <= 0) {
+    return 0;
+  }
+
+  return purchasePrice / divisor;
+});
+
+const displayedUnitCostPrice = computed(() => {
+  if (fetchedUnitCostPrice.value !== null && Number.isFinite(fetchedUnitCostPrice.value)) {
+    return fetchedUnitCostPrice.value;
+  }
+
+  return fallbackUnitCostPrice.value;
+});
 
 const fetchPurchasePriceByBatch = async (productId, batchNumber) => {
   if (!productId || !batchNumber) {
-    fetchedBatchPrice.value = null;
+    fetchedUnitCostPrice.value = null;
     return;
   }
 
@@ -722,24 +743,79 @@ const fetchPurchasePriceByBatch = async (productId, batchNumber) => {
 
     if (response.ok) {
       const data = await response.json();
-      if (data.success && data.purchase_price) {
-        fetchedBatchPrice.value = parseFloat(data.purchase_price).toFixed(2);
+      if (data.success && data.purchase_price !== null && data.purchase_price !== undefined) {
+        fetchedUnitCostPrice.value = Number(data.unit_cost_price ?? data.purchase_price);
       } else {
-        fetchedBatchPrice.value = null;
+        fetchedUnitCostPrice.value = null;
       }
     } else {
-      fetchedBatchPrice.value = null;
+      fetchedUnitCostPrice.value = null;
     }
   } catch (error) {
     console.error('Error fetching purchase price:', error);
-    fetchedBatchPrice.value = null;
+    fetchedUnitCostPrice.value = null;
   }
+};
+
+const fetchFifoUnitCostPrice = async (productId) => {
+  if (!productId) {
+    fetchedUnitCostPrice.value = null;
+    return;
+  }
+
+  try {
+    const response = await fetch(`/products/fifo-price/${productId}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      fetchedUnitCostPrice.value =
+        data.purchase_price !== null && data.purchase_price !== undefined
+          ? Number(data.unit_cost_price ?? data.purchase_price)
+          : null;
+    } else {
+      fetchedUnitCostPrice.value = null;
+    }
+  } catch (error) {
+    console.error('Error fetching FIFO unit cost price:', error);
+    fetchedUnitCostPrice.value = null;
+  }
+};
+
+const loadUnitCostPrice = async () => {
+  const productId = props.product?.id;
+  const batchNumber = props.product?.current_batch?.batch_number;
+
+  if (!productId) {
+    fetchedUnitCostPrice.value = null;
+    return;
+  }
+
+  if (batchNumber) {
+    await fetchPurchasePriceByBatch(productId, batchNumber);
+    return;
+  }
+
+  await fetchFifoUnitCostPrice(productId);
 };
 
 // Watch for modal open and fetch purchase price if product has batch
 const watchOpen = watch(() => props.open, (newVal) => {
-  if (newVal && props.product && props.product.current_batch) {
-    fetchPurchasePriceByBatch(props.product.id, props.product.current_batch.batch_number);
+  if (newVal) {
+    loadUnitCostPrice();
   }
 });
+
+watch(
+  () => [props.product?.id, props.product?.current_batch?.batch_number],
+  () => {
+    if (props.open) {
+      loadUnitCostPrice();
+    }
+  }
+);
 </script>

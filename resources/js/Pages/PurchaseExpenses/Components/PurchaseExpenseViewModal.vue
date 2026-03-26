@@ -73,6 +73,19 @@
 
                 <div class="mb-4">
                   <label class="block mb-2 text-sm font-medium text-gray-700">
+                    Supplier Due Date
+                  </label>
+                  <input
+                    :value="supplierDueDateDisplay"
+                    type="text"
+                    class="w-full px-3 py-2 text-sm text-gray-800 bg-gray-100 border border-gray-300 rounded-lg cursor-not-allowed"
+                    disabled
+                    readonly
+                  />
+                </div>
+
+                <div class="mb-4">
+                  <label class="block mb-2 text-sm font-medium text-gray-700">
                     Payment Type
                   </label>
                   <input
@@ -132,6 +145,7 @@ const form = useForm({
   amount: '',
   expense_date: '',
   payment_type: '',
+  card_type: '',
   reference: '',
 });
 
@@ -139,9 +153,22 @@ const page = usePage();
 
 // Computed property to display payment type name
 const paymentTypeDisplay = computed(() => {
+  if (form.payment_type === '1') {
+    const cardType = (form.card_type || '').toLowerCase();
+
+    if (cardType === 'visa') {
+      return 'Card (Visa)';
+    }
+
+    if (cardType === 'mastercard') {
+      return 'Card (MasterCard)';
+    }
+
+    return 'Card';
+  }
+
   const types = {
     '0': 'Cash',
-    '1': 'Card',
     '2': 'Cheque',
   };
   return types[form.payment_type] || 'N/A';
@@ -151,6 +178,16 @@ const paymentTypeDisplay = computed(() => {
 const expenseDateDisplay = computed(() => {
   if (!form.expense_date) return 'N/A';
   return new Date(form.expense_date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+});
+
+const supplierDueDateDisplay = computed(() => {
+  const dueDate = props.expense?.supplier?.due_date;
+  if (!dueDate) return 'N/A';
+  return new Date(dueDate).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -168,6 +205,7 @@ watch(() => props.expense, (expense) => {
     form.amount = expense.amount;
     form.expense_date = expense.expense_date;
     form.payment_type = expense.payment_type.toString();
+    form.card_type = expense.card_type || '';
     form.reference = expense.reference || '';
   }
 }, { immediate: true });

@@ -34,6 +34,11 @@ use Illuminate\Support\Facades\Auth;
  */
 class GoodReceiveNoteController extends Controller
 {
+    private function roundToWhole(float $value): int
+    {
+        return (int) round($value, 0, PHP_ROUND_HALF_UP);
+    }
+
     /**
      * Display a listing of all Goods Received Notes
      * 
@@ -113,6 +118,7 @@ class GoodReceiveNoteController extends Controller
             'products.*.issued_quantity'    => 'required|numeric|min:0.01',
             'products.*.purchase_price'     => 'required|numeric|min:0',
             'products.*.discount'           => 'nullable|numeric|min:0',
+            'products.*.discount_percentage'=> 'nullable|numeric|min:0|max:100',
             'products.*.measurement_unit_id'=> 'nullable|exists:measurement_units,id',
             'products.*.unit'               => 'nullable|string',
             'products.*.total'              => 'nullable|numeric',
@@ -136,7 +142,8 @@ class GoodReceiveNoteController extends Controller
         try {
             $rawDiscount = (float) ($validated['discount'] ?? 0);
             $discountType = $validated['discount_type'] ?? 'amount';
-            $grnTaxTotal = (int) floor((float) ($validated['tax_total'] ?? 0));
+            $grnDiscountPercentage = $discountType === 'percentage' ? $rawDiscount : null;
+            $grnTaxTotal = $this->roundToWhole((float) ($validated['tax_total'] ?? 0));
             $computedSubtotal = 0;
 
             // Create main GRN record
@@ -150,6 +157,7 @@ class GoodReceiveNoteController extends Controller
                 'subtotal'      => 0,
                 'discount'      => 0,
                 'discount_type' => $discountType,
+                'discount_percentage' => $grnDiscountPercentage,
                 'tax_total'     => $grnTaxTotal,
                 'remarks'       => $validated['remarks'] ?? null,
                 'status'        => 1,   
@@ -172,9 +180,16 @@ class GoodReceiveNoteController extends Controller
 
                 $requestedQty = (float) ($product['requested_quantity'] ?? 0);
                 $issuedQty = (float) ($product['issued_quantity'] ?? 0);
+                $purchasePrice = (float) ($product['purchase_price'] ?? 0);
+                $lineSubTotal = $issuedQty * $purchasePrice;
+                $itemDiscountPercentage = (float) ($product['discount_percentage'] ?? 0);
+                $itemDiscountPercentage = max(0, min(100, $itemDiscountPercentage));
+                $itemDiscountAmount = $this->roundToWhole(($lineSubTotal * $itemDiscountPercentage) / 100);
 
                 // Calculate line total: (qty × price) - discount
-                $lineTotal = (int) floor(($issuedQty * (float)($product['purchase_price'])) - ((float)($product['discount'] ?? 0)));
+                $lineTotal = $this->roundToWhole(
+                    $lineSubTotal - $itemDiscountAmount
+                );
                 $computedSubtotal += $lineTotal;
 
                 // Use GRN batch_number for all products in this GRN
@@ -195,8 +210,9 @@ class GoodReceiveNoteController extends Controller
                     'product_id'           => $product['product_id'],
                     // Store received amount in `quantity` using issued_quantity from frontend
                     'quantity'              => (int) $issuedQty,
-                    'purchase_price'        => $product['purchase_price'],
-                    'discount'              => $product['discount'] ?? 0,
+                    'purchase_price'        => $purchasePrice,
+                    'discount'              => $itemDiscountAmount,
+                    'discount_percentage'   => $itemDiscountPercentage,
                     'total'                 => $lineTotal,
                     'batch_number'          => $batchNumberForProduct,
                    
@@ -251,8 +267,8 @@ class GoodReceiveNoteController extends Controller
             }
 
             $grnDiscount = $discountType === 'percentage'
-                ? (int) floor(($computedSubtotal * $rawDiscount) / 100)
-                : (int) floor($rawDiscount);
+                ? $this->roundToWhole(($computedSubtotal * $rawDiscount) / 100)
+                : $this->roundToWhole($rawDiscount);
 
             $grn->update([
                 'subtotal' => $computedSubtotal,

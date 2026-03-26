@@ -18,6 +18,7 @@ class GoodsReceivedNoteProduct extends Model
         'quantity',
         'purchase_price', 
         'discount',
+        'discount_percentage',
         'total',
     ];
 
@@ -25,6 +26,7 @@ class GoodsReceivedNoteProduct extends Model
         'quantity' => 'integer',
         'purchase_price' => 'decimal:2',
         'discount' => 'decimal:2',
+        'discount_percentage' => 'decimal:2',
         'total' => 'decimal:2',
     ];
 

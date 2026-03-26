@@ -235,7 +235,7 @@ watch(() => props.grn, (newGrn) => {
 
 const grandTotal = computed(() => {
   const total = products.value.reduce((sum, product) => sum + (parseFloat(product.total) || 0), 0)
-  return Math.floor(total)
+  return Math.round(total)
 })
 
 const close = () => {
@@ -263,11 +263,11 @@ const calculateTotal = (index) => {
   const price = parseFloat(p.purchase_price) || 0
   const discount = parseFloat(p.discount) || 0
 
-  p.total = Math.floor((qty * price) - discount)
+  p.total = Math.round((qty * price) - discount)
 }
 
 const formatNumber = (number) => {
-  return Math.floor(parseFloat(number || 0)).toLocaleString('en-US', {
+  return Math.round(parseFloat(number || 0)).toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })

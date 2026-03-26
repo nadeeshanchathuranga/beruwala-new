@@ -5,6 +5,23 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int|null $sale_id
+ * @property int|null $customer_id
+ * @property int|null $user_id
+ * @property string|null $return_date
+ * @property int $return_type
+ * @property float|null $refund_amount
+ * @property string|null $refund_method
+ * @property string|null $notes
+ * @property int $status
+ * @property-read string $status_text
+ * @property-read string $status_color
+ * @property-read string $return_type_text
+ * @property-read string $return_type_color
+ * @property-read float|int $total_refund
+ */
 class SalesReturn extends Model
 {
     use HasFactory;

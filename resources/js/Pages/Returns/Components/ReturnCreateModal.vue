@@ -452,7 +452,7 @@
                 >
                   <div>
                     <span class="font-semibold">{{
-                      formatRefundMethod(payment.method)
+                      formatRefundMethod(payment.method, payment.card_type)
                     }}</span>
                     <span class="text-gray-600 ml-2"
                       >{{ currencySymbol }}
@@ -554,6 +554,18 @@
           <option value="card">💳 Card</option>
           <option value="cheque">📄 Cheque</option>
           <option value="bank_transfer">🏦 Bank Transfer</option>
+        </select>
+      </div>
+
+      <div v-if="selectedPaymentMethod === 'card'" class="mb-6">
+        <label class="block text-sm font-medium text-gray-700 mb-3">Card Type</label>
+        <select
+          v-model="selectedPaymentCardType"
+          class="w-full px-4 py-3 text-sm bg-white text-gray-800 border border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+        >
+          <option value="">Select Card Type</option>
+          <option value="visa">💳 Visa</option>
+          <option value="mastercard">💳 MasterCard</option>
         </select>
       </div>
 
@@ -734,6 +746,7 @@ const remainingBalance = computed(() => Math.max(0, balance.value - totalPaid.va
 // Payment Modal
 const showPaymentModal = ref(false);
 const selectedPaymentMethod = ref("cash");
+const selectedPaymentCardType = ref("");
 const paymentModalAmount = ref(0);
 
 // Return Quantity Modal
@@ -947,6 +960,7 @@ const openPaymentModal = () => {
       ? Math.min(paymentAmount.value, remainingBalance.value)
       : remainingBalance.value;
   selectedPaymentMethod.value = "cash";
+  selectedPaymentCardType.value = "";
   showPaymentModal.value = true;
 };
 
@@ -989,15 +1003,18 @@ const searchByInvoice = () => {
   );
 };
 
-const formatRefundMethod = (method) => {
-  return (
-    {
-      cash: "💵 Cash",
-      card: "💳 Card",
-      cheque: "📄 Cheque",
-      bank_transfer: "🏦 Bank Transfer",
-    }[method] || method
-  );
+const formatRefundMethod = (method, cardType = null) => {
+  if (method === "card") {
+    if (cardType === "visa") return "💳 Card (Visa)";
+    if (cardType === "mastercard") return "💳 Card (MasterCard)";
+    return "💳 Card";
+  }
+
+  return {
+    cash: "💵 Cash",
+    cheque: "📄 Cheque",
+    bank_transfer: "🏦 Bank Transfer",
+  }[method] || method;
 };
 
 const isSelected = (productId) => {
@@ -1350,16 +1367,24 @@ const confirmPayment = () => {
     return;
   }
 
+  if (selectedPaymentMethod.value === "card" && !selectedPaymentCardType.value) {
+    alert("Please select Card Type (Visa or MasterCard).");
+    return;
+  }
+
   // Add payment entry to payments array
   payments.value.push({
     amount: paymentModalAmount.value,
     method: selectedPaymentMethod.value,
+    card_type:
+      selectedPaymentMethod.value === "card" ? selectedPaymentCardType.value : null,
   });
 
   // Close the modal and reset fields
   showPaymentModal.value = false;
   paymentModalAmount.value = 0;
   selectedPaymentMethod.value = "cash";
+  selectedPaymentCardType.value = "";
   paymentAmount.value = totalPaid.value;
 };
 

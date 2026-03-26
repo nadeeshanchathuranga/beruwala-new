@@ -21,6 +21,7 @@ class GoodsReceivedNote extends Model
         'subtotal',
         'discount',
         'discount_type',
+        'discount_percentage',
         'tax_total',
         'remarks',
         'status',

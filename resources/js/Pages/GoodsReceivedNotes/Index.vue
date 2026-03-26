@@ -73,7 +73,7 @@
               </td>
               <td class="px-4 py-4">
                 <span class="text-sm text-gray-800">{{
-                  formatDiscount(goodsReceivedNote.discount, goodsReceivedNote.discount_type)
+                  formatItemDiscountRates(goodsReceivedNote)
                 }}</span>
               </td>
               <td class="px-4 py-4">
@@ -213,17 +213,35 @@ const formatDate = (date) => {
 };
 
 const formatNumber = (number) => {
-  return Math.floor(parseFloat(number || 0)).toLocaleString("en-US", {
+  return Math.round(parseFloat(number || 0)).toLocaleString("en-US", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
 };
 
-const formatDiscount = (discount, discountType) => {
-  const formattedDiscount = formatNumber(discount);
-  return discountType === "percentage"
-    ? `${formattedDiscount} (%)`
-    : `${formattedDiscount}`;
+const formatItemDiscountRates = (goodsReceivedNote) => {
+  const products = goodsReceivedNote?.goods_received_note_products || [];
+
+  const uniqueRates = [...new Set(
+    products
+      .map((product) => {
+        const rate = Number(product?.discount_percentage ?? 0);
+        return Number.isFinite(rate) ? rate : 0;
+      })
+      .filter((rate) => rate > 0)
+      .map((rate) => Number(rate.toFixed(2)))
+  )];
+
+  if (uniqueRates.length > 0) {
+    return uniqueRates.map((rate) => `${formatNumber(rate)}%`).join(", ");
+  }
+
+  const headerRate = Number(goodsReceivedNote?.discount_percentage ?? 0);
+  if (Number.isFinite(headerRate) && headerRate > 0) {
+    return `${formatNumber(headerRate)}%`;
+  }
+
+  return "0%";
 };
 </script>
 

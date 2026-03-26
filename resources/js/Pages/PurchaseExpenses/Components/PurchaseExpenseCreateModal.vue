@@ -74,6 +74,21 @@
 
                     <div>
                       <label class="block mb-2 text-sm font-medium text-gray-700">
+                        Transaction Due Date
+                      </label>
+                      <input
+                        type="text"
+                        :value="formatDate(supplierData.transaction_due_date || supplierData.supplier_due_date)"
+                        class="w-full px-3 py-2 text-sm text-gray-800 bg-gray-100 border border-gray-300 rounded-lg"
+                        readonly
+                      />
+                      <p class="mt-1 text-xs text-gray-500">
+                        {{ supplierData.grn_no ? `Linked GRN: ${supplierData.grn_no}` : 'Linked GRN: N/A' }}
+                      </p>
+                    </div>
+
+                    <div>
+                      <label class="block mb-2 text-sm font-medium text-gray-700">
                         Total Amount ({{ page.props.currency || '' }})
                       </label>
                       <input
@@ -173,6 +188,24 @@
                       </p>
                     </div>
 
+                    <div v-if="form.payment_type === '1'" class="mb-4">
+                      <label class="block mb-2 text-sm font-medium text-gray-700">
+                        Card Type <span class="text-red-500">*</span>
+                      </label>
+                      <select
+                        v-model="form.card_type"
+                        class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        required
+                      >
+                        <option value="">Select Card Type</option>
+                        <option value="visa">Visa</option>
+                        <option value="mastercard">MasterCard</option>
+                      </select>
+                      <p v-if="form.errors.card_type" class="mt-1 text-sm text-red-500">
+                        {{ form.errors.card_type }}
+                      </p>
+                    </div>
+
                     <!-- Reference field for Card and Cheque -->
                     <div v-if="form.payment_type === '1' || form.payment_type === '2'" class="mb-4">
                       <label class="block mb-2 text-sm font-medium text-gray-700">
@@ -234,6 +267,10 @@ const props = defineProps({
     type: Object,
     default: () => ({
       supplier: '',
+      supplier_due_date: null,
+      transaction_due_date: null,
+      grn_no: null,
+      grn_date: null,
       total_amount: 0,
       paid: 0,
       balance: 0,
@@ -249,6 +286,7 @@ const form = useForm({
   amount: '',
   expense_date: new Date().toISOString().split('T')[0],
   payment_type: '',
+  card_type: '',
   supplier_id: '',
   reference: '',
 });
@@ -302,6 +340,7 @@ const submit = () => {
         expense_date: form.expense_date,
         amount: form.amount,
         payment_type: form.payment_type,
+        card_type: form.card_type || null,
       });
       // Close modal and redirect/refresh to Supplier Payment page
       emit('close');
@@ -326,6 +365,15 @@ const formatAmount = (amount) => {
   });
 };
 
+const formatDate = (date) => {
+  if (!date) return '-';
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
 watch(() => props.show, (value) => {
   if (value) {
     document.body.style.overflow = 'hidden';
@@ -336,6 +384,16 @@ watch(() => props.show, (value) => {
     selectedSupplierId.value = '';
   }
 });
+
+watch(
+  () => form.payment_type,
+  (value) => {
+    if (value !== '1') {
+      form.card_type = '';
+      form.clearErrors('card_type');
+    }
+  }
+);
 
 // Cleanup on unmount
 onUnmounted(() => {

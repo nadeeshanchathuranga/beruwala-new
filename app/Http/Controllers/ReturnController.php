@@ -7,7 +7,6 @@ use App\Models\SalesReturnProduct;
 use App\Models\Sale;
 use App\Models\SalesProduct;
 use App\Models\Product;
-use App\Models\Customer;
 use App\Models\ProductMovement;
 use App\Models\CompanyInformation;
 use App\Models\SalesReturnReplacementProduct;
@@ -17,6 +16,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use Barryvdh\DomPDF\Facade\Pdf;
 
@@ -88,13 +88,17 @@ class ReturnController extends Controller
         // Add computed fields
         $returns->through(function ($return) {
             // Compute returned and replacement totals for net payment
-            $returnedTotal = $return->products->sum(function ($item) {
-                return (float)($item->total ?? 0);
-            });
-            $replacementTotal = $return->replacements->sum(function ($rep) {
-                $unit = $rep->unit_price ?? ($rep->product?->retail_price ?? 0);
-                return (float)$unit * (int)$rep->quantity;
-            });
+            $returnedTotal = $return->products
+                ->map(function ($item) {
+                    return (float) ($item->total ?? 0);
+                })
+                ->sum();
+            $replacementTotal = $return->replacements
+                ->map(function ($rep) {
+                    $unit = $rep->unit_price ?? ($rep->product?->retail_price ?? 0);
+                    return (float) $unit * (int) $rep->quantity;
+                })
+                ->sum();
 
             if ($return->return_type === SalesReturn::TYPE_CASH_RETURN) {
                 $paymentDueLabel = 'Refund to customer';
@@ -724,8 +728,17 @@ class ReturnController extends Controller
         // Multi-payment support
         'payments' => 'nullable|array',
         'payments.*.amount' => 'required_with:payments|numeric|min:0',
-        'payments.*.method' => 'required_with:payments|string',
+        'payments.*.method' => 'required_with:payments|string|in:cash,card,cheque,bank_transfer',
+        'payments.*.card_type' => 'nullable|in:visa,mastercard',
     ]);
+
+    foreach ($request->input('payments', []) as $index => $payment) {
+        if (($payment['method'] ?? null) === 'card' && empty($payment['card_type'])) {
+            throw ValidationException::withMessages([
+                "payments.{$index}.card_type" => 'Card type is required when payment method is card.',
+            ]);
+        }
+    }
 
     DB::transaction(function () use ($request) {
         // Get the first sales product to determine sale and customer
@@ -1181,14 +1194,18 @@ class ReturnController extends Controller
         $company = CompanyInformation::first();
         $currency = $company?->currency ?? '';
 
-        $returnedTotal = $return->products->sum(function ($item) {
-            return (float)($item->total ?? 0);
-        });
+        $returnedTotal = $return->products
+            ->map(function ($item) {
+                return (float) ($item->total ?? 0);
+            })
+            ->sum();
 
-        $replacementTotal = $return->replacements->sum(function ($rep) {
-            $unit = $rep->unit_price ?? ($rep->product?->retail_price ?? 0);
-            return (float)$unit * (int)$rep->quantity;
-        });
+        $replacementTotal = $return->replacements
+            ->map(function ($rep) {
+                $unit = $rep->unit_price ?? ($rep->product?->retail_price ?? 0);
+                return (float) $unit * (int) $rep->quantity;
+            })
+            ->sum();
 
         if ($return->return_type === SalesReturn::TYPE_CASH_RETURN) {
             $netAmount = (float)($return->refund_amount ?? 0);

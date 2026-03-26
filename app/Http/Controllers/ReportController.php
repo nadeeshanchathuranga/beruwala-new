@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use App\Models\Income;
 use App\Models\Sale;
 use App\Models\Product;
@@ -185,12 +186,11 @@ class ReportController extends Controller
 
         // Expenses list with relations
         $expensesList = Expense::with(['user:id,name', 'supplier:id,name'])
-            ->select('id', 'title', 'amount', 'remark', 'expense_date', 'payment_type', 'user_id', 'supplier_id', 'reference')
+            ->select('id', 'title', 'amount', 'remark', 'expense_date', 'payment_type', 'card_type', 'user_id', 'supplier_id', 'reference')
             ->whereBetween('expense_date', [$startDate, $endDate])
             ->orderBy('expense_date', 'desc')
             ->get()
             ->map(function ($item) {
-                $paymentTypes = [0 => 'Cash', 1 => 'Card', 2 => 'Credit'];
                 return [
                     'id' => $item->id,
                     'title' => $item->title,
@@ -198,7 +198,7 @@ class ReportController extends Controller
                     'amount' => number_format($item->amount, 2),
                     'expense_date' => $item->expense_date,
                     'payment_type' => $item->payment_type,
-                    'payment_type_name' => $paymentTypes[$item->payment_type] ?? 'Unknown',
+                    'payment_type_name' => $this->getExpensePaymentTypeName($item->payment_type, $item->card_type),
                     'reference' => $item->reference,
                     'user_name' => $item->user->name ?? 'N/A',
                     'supplier_name' => $item->supplier->name ?? 'N/A',
@@ -397,8 +397,8 @@ class ReportController extends Controller
 
         $currency = CompanyInformation::first()?->currency ?? 'Rs.';
 
-        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.Components.product-stock-pdf', [
+        if (class_exists(Pdf::class)) {
+            $pdf = Pdf::loadView('reports.Components.product-stock-pdf', [
                 'productsStock' => $productsStock,
                 'reportDate' => date('Y-m-d'),
                 'currency' => $currency,
@@ -504,8 +504,8 @@ class ReportController extends Controller
             ->orderBy('expense_date', 'desc')
             ->get();
 
-        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.Components.expenses-pdf', [
+        if (class_exists(Pdf::class)) {
+            $pdf = Pdf::loadView('reports.Components.expenses-pdf', [
                 'expensesList' => $expensesList,
                 'totalExpenses' => $expensesList->sum('amount'),
                 'startDate' => $startDate,
@@ -809,8 +809,8 @@ class ReportController extends Controller
             })
             ->values();
 
-        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.Components.product-sales-pdf', [
+        if (class_exists(Pdf::class)) {
+            $pdf = Pdf::loadView('reports.Components.product-sales-pdf', [
                 'productSalesReport' => $productSalesReport,
                 'startDate' => $startDate,
                 'endDate' => $endDate,
@@ -1311,8 +1311,8 @@ class ReportController extends Controller
         $currency = $currencySymbol?->currency ?? 'Rs.';
 
         // Generate PDF using DomPDF if available
-        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.Components.product-movement-sales-optimization-pdf', [
+        if (class_exists(Pdf::class)) {
+            $pdf = Pdf::loadView('reports.Components.product-movement-sales-optimization-pdf', [
                 'products' => $products,
                 'startDate' => $startDate,
                 'endDate' => $endDate,
@@ -1521,7 +1521,7 @@ class ReportController extends Controller
             ->sum('amount');
 
         $expensesList = Expense::with(['user:id,name', 'supplier:id,name'])
-            ->select('id', 'title', 'amount', 'remark', 'expense_date', 'payment_type', 'user_id', 'supplier_id', 'reference')
+            ->select('id', 'title', 'amount', 'remark', 'expense_date', 'payment_type', 'card_type', 'user_id', 'supplier_id', 'reference')
             ->whereBetween('expense_date', [$startDate, $endDate])
             ->when($supplierId, function($query) use ($supplierId) {
                 $query->where('supplier_id', $supplierId);
@@ -1532,7 +1532,6 @@ class ReportController extends Controller
 
         // Transform the paginated collection
         $expensesList->getCollection()->transform(function ($item) {
-            $paymentTypes = [0 => 'Cash', 1 => 'Card', 2 => 'Cheque'];
             return [
                 'id' => $item->id,
                 'title' => $item->title,
@@ -1540,7 +1539,7 @@ class ReportController extends Controller
                 'amount' => number_format($item->amount, 2),
                 'expense_date' => $item->expense_date,
                 'payment_type' => $item->payment_type,
-                'payment_type_name' => $paymentTypes[$item->payment_type] ?? 'Unknown',
+                'payment_type_name' => $this->getExpensePaymentTypeName($item->payment_type, $item->card_type),
                 'reference' => $item->reference,
                 'user_name' => $item->user->name ?? 'N/A',
                 'supplier_name' => $item->supplier->name ?? 'N/A',
@@ -1699,6 +1698,39 @@ class ReportController extends Controller
 
         $netIncome = $totalIncome - $totalReturns;
 
+        $paymentMethodTotals = $this->buildSalesIncomePaymentTotals($startDate, $endDate);
+
+        $currencySymbol = CompanyInformation::first();
+        $currency = $currencySymbol?->currency ?? 'Rs.';
+
+        return Inertia::render('Reports/SalesIncomeReport', [
+            'salesIncomeList' => $salesIncomeList,
+            'totalIncome' => number_format($totalIncome, 2),
+            'totalReturns' => number_format($totalReturns, 2),
+            'netIncome' => number_format($netIncome, 2),
+            'paymentMethodTotals' => $paymentMethodTotals,
+            'startDate' => $startDate,
+            'endDate' => $endDate,
+            'currencySymbol' => $currencySymbol,
+            'currency' => $currency,
+        ]);
+    }
+
+    public function salesIncomeTotals(Request $request): JsonResponse
+    {
+        $startDate = $request->input('start_date', Carbon::now()->startOfMonth()->format('Y-m-d'));
+        $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
+
+        $paymentMethodTotals = $this->buildSalesIncomePaymentTotals($startDate, $endDate);
+
+        return response()->json([
+            'paymentMethodTotals' => $paymentMethodTotals,
+            'updated_at' => now()->toDateTimeString(),
+        ]);
+    }
+
+    private function buildSalesIncomePaymentTotals(string $startDate, string $endDate)
+    {
         $paymentTypeLabels = [
             0 => 'Cash',
             1 => 'Card',
@@ -1711,7 +1743,7 @@ class ReportController extends Controller
             ->groupBy('payment_type')
             ->pluck('total_amount', 'payment_type');
 
-        $paymentMethodTotals = collect($paymentTypeLabels)
+        return collect($paymentTypeLabels)
             ->map(function ($label, $paymentType) use ($paymentTypeSums) {
                 $total = (float) ($paymentTypeSums[$paymentType] ?? 0);
 
@@ -1722,21 +1754,8 @@ class ReportController extends Controller
                     'formatted_total' => number_format($total, 2),
                 ];
             })
-            ->values();
-
-        $currencySymbol = CompanyInformation::first();
-        $currency = $currencySymbol?->currency ?? 'Rs.';
-
-        return Inertia::render('Reports/SalesIncomeReport', [
-            'salesIncomeList' => $salesIncomeList,
-            'totalIncome' => number_format($totalIncome, 2),
-            'totalReturns' => number_format($totalReturns, 2),
-            'netIncome' => number_format($netIncome, 2),
-            'startDate' => $startDate,
-            'endDate' => $endDate,
-            'currencySymbol' => $currencySymbol,
-            'currency' => $currency,
-        ]);
+            ->values()
+            ->all();
     }
 
     private function getIncomePaymentTypeName($paymentType, $cardType = null): string
@@ -1760,6 +1779,33 @@ class ReportController extends Controller
         $paymentTypes = [
             0 => 'Cash',
             2 => 'Credit',
+        ];
+
+        return $paymentTypes[$paymentType] ?? 'Unknown';
+    }
+
+    private function getExpensePaymentTypeName($paymentType, $cardType = null): string
+    {
+        $paymentType = (int) $paymentType;
+
+        if ($paymentType === 1) {
+            $resolvedCardType = strtolower((string) $cardType);
+
+            if ($resolvedCardType === 'visa') {
+                return 'Card (Visa)';
+            }
+
+            if ($resolvedCardType === 'mastercard') {
+                return 'Card (MasterCard)';
+            }
+
+            return 'Card';
+        }
+
+        $paymentTypes = [
+            0 => 'Cash',
+            2 => 'Cheque',
+            3 => 'Bank Transfer',
         ];
 
         return $paymentTypes[$paymentType] ?? 'Unknown';
@@ -1843,8 +1889,8 @@ class ReportController extends Controller
             $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
             $data = $this->buildGoodsReceivedNoteData($startDate, $endDate);
             $currency = CompanyInformation::first()?->currency ?? 'Rs.';
-            if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-                $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.Components.good-receive-note-pdf', [
+            if (class_exists(Pdf::class)) {
+                $pdf = Pdf::loadView('reports.Components.good-receive-note-pdf', [
                     'rows' => $data['rows'],
                     'totals' => $data['totals'],
                     'startDate' => $startDate,
@@ -1931,8 +1977,8 @@ class ReportController extends Controller
             $data = $this->buildGrnReturnData($startDate, $endDate);
             $currency = CompanyInformation::first()?->currency ?? 'Rs.';
 
-            if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-                $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.Components.good-receive-note-return-pdf', [
+            if (class_exists(Pdf::class)) {
+                $pdf = Pdf::loadView('reports.Components.good-receive-note-return-pdf', [
                     'rows' => $data['rows'],
                     'totals' => $data['totals'],
                     'startDate' => $startDate,
@@ -2019,8 +2065,8 @@ class ReportController extends Controller
             $productId = $request->input('product_id', null);
             $data = $this->buildProductMovementData($startDate, $endDate, $productId);
 
-            if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-                $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.Components.product-movement-pdf', [
+            if (class_exists(Pdf::class)) {
+                $pdf = Pdf::loadView('reports.Components.product-movement-pdf', [
                     'movements' => $data['movements'],
                     'summaryByType' => $data['summaryByType'],
                     'totals' => $data['totals'],
@@ -2430,8 +2476,8 @@ class ReportController extends Controller
             ];
         });
 
-        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.Components.low-stock-pdf', ['products' => $products]);
+        if (class_exists(Pdf::class)) {
+            $pdf = Pdf::loadView('reports.Components.low-stock-pdf', ['products' => $products]);
             return $pdf->download('low-stock-report-' . date('Y-m-d') . '.pdf');
         }
 
@@ -2570,8 +2616,8 @@ class ReportController extends Controller
             ];
         });
 
-        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.Components.low-stock-shop-pdf', [
+        if (class_exists(Pdf::class)) {
+            $pdf = Pdf::loadView('reports.Components.low-stock-shop-pdf', [
                 'products' => $products,
                 'startDate' => $startDate,
                 'endDate' => $endDate
@@ -2714,8 +2760,8 @@ class ReportController extends Controller
             ];
         });
 
-        if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
-            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('reports.Components.low-stock-store-pdf', [
+        if (class_exists(Pdf::class)) {
+            $pdf = Pdf::loadView('reports.Components.low-stock-store-pdf', [
                 'products' => $products,
                 'startDate' => $startDate,
                 'endDate' => $endDate
