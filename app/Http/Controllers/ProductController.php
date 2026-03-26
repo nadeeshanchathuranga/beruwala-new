@@ -454,8 +454,9 @@ class ProductController extends Controller
     }
 
     /**
-     * Calculate per-piece unit cost from a GRN line using:
-     * unit_cost = total_cost / total_units
+     * Calculate per-piece unit cost from a GRN line using subtotal (before discount):
+     * 1) purchase_unit_cost = line_subtotal_excluding_discount / quantity
+     * 2) piece_unit_cost = purchase_unit_cost / (purchase_to_transfer_rate * transfer_to_sales_rate)
      */
     private function calculateUnitCostPrice(GoodsReceivedNoteProduct $grnProduct, Product $product): ?float
     {
@@ -469,17 +470,29 @@ class ProductController extends Controller
         $purchaseToTransferRate = $purchaseToTransferRate > 0 ? $purchaseToTransferRate : 1.0;
         $transferToSalesRate = $transferToSalesRate > 0 ? $transferToSalesRate : 1.0;
 
-        $totalUnits = $quantity * $purchaseToTransferRate * $transferToSalesRate;
-        if ($totalUnits <= 0) {
+        $conversionMultiplier = $purchaseToTransferRate * $transferToSalesRate;
+        if ($conversionMultiplier <= 0) {
             return null;
         }
 
         $lineTotal = is_numeric($grnProduct->total) ? (float) $grnProduct->total : 0.0;
-        if ($lineTotal <= 0) {
-            $lineTotal = ((float) ($grnProduct->purchase_price ?? 0)) * $quantity;
+        $lineDiscount = is_numeric($grnProduct->discount) ? (float) $grnProduct->discount : 0.0;
+
+        // Rebuild subtotal before discount from line values.
+        $lineSubtotalExcludingDiscount = $lineTotal > 0 ? ($lineTotal + max(0, $lineDiscount)) : 0.0;
+
+        // Fallback if line totals are unavailable.
+        if ($lineSubtotalExcludingDiscount <= 0) {
+            $lineSubtotalExcludingDiscount = ((float) ($grnProduct->purchase_price ?? 0)) * $quantity;
         }
 
-        return round($lineTotal / $totalUnits, 2);
+        if ($lineSubtotalExcludingDiscount <= 0) {
+            return null;
+        }
+
+        $purchaseUnitCost = $lineSubtotalExcludingDiscount / $quantity;
+
+        return round($purchaseUnitCost / $conversionMultiplier, 2);
     }
 
     /**
@@ -527,6 +540,43 @@ class ProductController extends Controller
             'unit_cost_price' => $fifoPurchasePrice,
             'source' => 'FIFO',
             'message' => $fifoPurchasePrice ? 'Unit cost price fetched from oldest GRN' : 'No stock available in GRN',
+        ]);
+    }
+
+    /**
+     * Update shop-side sales pricing data from Product Details view.
+     * Purchase cost remains GRN-derived and is not updated here.
+     */
+    public function updateShopSalesData(Request $request, Product $product)
+    {
+        $validated = $request->validate([
+            'piece_price' => 'nullable|numeric|min:0',
+            'cut_price' => 'nullable|numeric|min:0',
+            'retail_price' => 'nullable|numeric|min:0',
+            'wholesale_price' => 'nullable|numeric|min:0',
+        ]);
+
+        $piecePrice = array_key_exists('piece_price', $validated)
+            ? $validated['piece_price']
+            : ($validated['retail_price'] ?? $product->retail_price);
+
+        $cutPrice = array_key_exists('cut_price', $validated)
+            ? $validated['cut_price']
+            : ($validated['wholesale_price'] ?? $product->wholesale_price);
+
+        $product->update([
+            'retail_price' => $piecePrice,
+            'wholesale_price' => $cutPrice,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Shop sales data updated successfully.',
+            'product' => [
+                'id' => $product->id,
+                'retail_price' => $product->retail_price,
+                'wholesale_price' => $product->wholesale_price,
+            ],
         ]);
     }
 }

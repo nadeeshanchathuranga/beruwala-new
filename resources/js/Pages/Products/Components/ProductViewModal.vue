@@ -138,42 +138,60 @@
           <h3 class="mb-3 text-lg font-semibold text-green-600 flex items-center gap-2">
             💰 Pricing Information ({{ page.props.currency || "" }})
           </h3>
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-            <div class="p-3 bg-white rounded-lg border border-gray-200">
-              <p class="text-xs text-gray-600">Unit Cost Price (per piece)</p>
-              <p class="text-base font-bold text-green-600">
-                {{ formatPrice(displayedUnitCostPrice) }}
-              </p>
-              <p v-if="fetchedUnitCostPrice !== null" class="text-xs text-gray-500 mt-1">
-                (From goods received note)
-              </p>
-            </div>
-            <div class="p-3 bg-white rounded-lg border border-gray-200">
-              <p class="text-xs text-gray-600">Wholesale Price</p>
-              <p class="text-base font-bold text-blue-600">
-                {{ formatPrice(product?.wholesale_price) }}
-              </p>
-            </div>
-            <div class="p-3 bg-white rounded-lg border border-gray-200">
-              <p class="text-xs text-gray-600">Retail Price</p>
-              <p class="text-base font-bold text-amber-600">
-                {{ formatPrice(product?.retail_price) }}
-              </p>
-            </div>
-            <div class="p-3 bg-white rounded-lg border border-gray-200">
-              <p class="text-xs text-gray-600">Discount</p>
-              <p class="text-sm font-medium text-gray-800">
-                {{ product?.discount?.name || "No Discount" }}
+          <div class="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <div>
+                <label class="block mb-2 text-sm font-medium text-gray-700">Purchase Price</label>
+                <input
+                  :value="formatPrice(displayedUnitCostPrice)"
+                  type="text"
+                  class="w-full px-4 py-2 text-gray-800 bg-gray-50 border border-gray-300 rounded-lg"
+                  readonly
+                />
+                <p v-if="fetchedUnitCostPrice !== null" class="text-xs text-gray-500 mt-1">
+                  Unit purchasing price from GRN subtotal (before discounts)
+                </p>
+              </div>
 
-                {{ product?.discount?.value }}
-                {{ product?.discount?.type === 0 ? "%" : page.props.currency || "" }}
-              </p>
-            </div>
-            <div class="p-3 bg-white rounded-lg border border-gray-200">
-              <p class="text-xs text-gray-600">Tax</p>
-              <p class="text-sm font-medium text-gray-800">
-                {{ product?.tax?.name || "No Tax" }}
-              </p>
+              <div>
+                <label class="block mb-2 text-sm font-medium text-gray-700">Wholesale Price</label>
+                <input
+                  :value="formatPrice(product?.wholesale_price)"
+                  type="text"
+                  class="w-full px-4 py-2 text-gray-800 bg-gray-50 border border-gray-300 rounded-lg"
+                  readonly
+                />
+              </div>
+
+              <div>
+                <label class="block mb-2 text-sm font-medium text-gray-700">Retail Price</label>
+                <input
+                  :value="formatPrice(product?.retail_price)"
+                  type="text"
+                  class="w-full px-4 py-2 text-gray-800 bg-gray-50 border border-gray-300 rounded-lg"
+                  readonly
+                />
+              </div>
+
+              <div>
+                <label class="block mb-2 text-sm font-medium text-gray-700">Tax</label>
+                <input
+                  :value="product?.tax ? `${product.tax.name} - ${product.tax.percentage}%` : 'No Tax'"
+                  type="text"
+                  class="w-full px-4 py-2 text-gray-800 bg-gray-50 border border-gray-300 rounded-lg"
+                  readonly
+                />
+              </div>
+
+              <div>
+                <label class="block mb-2 text-sm font-medium text-gray-700">Discount Type</label>
+                <input
+                  :value="product?.discount ? `${product.discount.name} - ${product.discount.value} ${product.discount.type === 0 ? '%' : (page.props.currency || '')}` : 'No Discount'"
+                  type="text"
+                  class="w-full px-4 py-2 text-gray-800 bg-gray-50 border border-gray-300 rounded-lg"
+                  readonly
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -664,6 +682,7 @@ watch(
       generateBarcode();
       barcodeQuantity.value = 1; // Reset quantity when modal opens
       columnsPerRow.value = 1; // Reset columns to default
+      initializeShopSalesForm();
     }
   }
 );
@@ -677,6 +696,7 @@ watch(
   () => {
     if (props.open) {
       generateBarcode();
+      initializeShopSalesForm();
     }
   }
 );
@@ -700,6 +720,67 @@ const storeQtyInPurchase = computed(() => {
  * based on product_id and batch_number
  */
 const fetchedUnitCostPrice = ref(null);
+const isSavingShopSalesData = ref(false);
+const shopSalesMessage = ref("");
+const shopSalesMessageType = ref("success");
+const shopSalesForm = ref({
+  piece_price: "",
+  cut_price: "",
+});
+
+const toPriceInput = (value) => {
+  if (value === null || value === undefined || value === "") return "";
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return "";
+  return numericValue.toFixed(2);
+};
+
+const initializeShopSalesForm = () => {
+  shopSalesForm.value = {
+    piece_price: toPriceInput(props.product?.retail_price),
+    cut_price: toPriceInput(props.product?.wholesale_price),
+  };
+  shopSalesMessage.value = "";
+};
+
+const saveShopSalesData = async () => {
+  if (!props.product?.id) return;
+
+  isSavingShopSalesData.value = true;
+  shopSalesMessage.value = "";
+
+  try {
+    const response = await fetch(`/products/${props.product.id}/shop-sales-data`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.content,
+      },
+      body: JSON.stringify({
+        piece_price: shopSalesForm.value.piece_price === "" ? null : Number(shopSalesForm.value.piece_price),
+        cut_price: shopSalesForm.value.cut_price === "" ? null : Number(shopSalesForm.value.cut_price),
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data?.success) {
+      throw new Error(data?.message || "Failed to update shop sales data.");
+    }
+
+    shopSalesForm.value = {
+      piece_price: toPriceInput(data?.product?.retail_price),
+      cut_price: toPriceInput(data?.product?.wholesale_price),
+    };
+    shopSalesMessageType.value = "success";
+    shopSalesMessage.value = data?.message || "Shop sales data updated successfully.";
+  } catch (error) {
+    shopSalesMessageType.value = "error";
+    shopSalesMessage.value = error?.message || "Failed to update shop sales data.";
+  } finally {
+    isSavingShopSalesData.value = false;
+  }
+};
 
 const fallbackUnitCostPrice = computed(() => {
   const purchasePrice = Number(props.product?.purchase_price);
@@ -806,6 +887,7 @@ const loadUnitCostPrice = async () => {
 // Watch for modal open and fetch purchase price if product has batch
 const watchOpen = watch(() => props.open, (newVal) => {
   if (newVal) {
+    initializeShopSalesForm();
     loadUnitCostPrice();
   }
 });

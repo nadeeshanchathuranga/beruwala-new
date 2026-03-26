@@ -232,6 +232,8 @@ import Modal from "@/Components/Modal.vue";
 import { logActivity } from "@/composables/useActivityLog";
 import axios from "axios";
 
+const unitCostCache = new Map();
+
 const props = defineProps({
   open: Boolean,
   availableProducts: Array,
@@ -251,6 +253,53 @@ const form = ref({
 
 const products = ref([]);
 const page = usePage();
+
+const fetchUnitCostPrice = async (productId) => {
+  if (!productId) return null;
+  if (unitCostCache.has(productId)) return unitCostCache.get(productId);
+
+  try {
+    const response = await axios.get(`/products/fifo-price/${productId}`);
+    const value = Number(response?.data?.unit_cost_price ?? response?.data?.purchase_price);
+    const unitCost = Number.isFinite(value) && value > 0 ? value : null;
+    unitCostCache.set(productId, unitCost);
+    return unitCost;
+  } catch (error) {
+    unitCostCache.set(productId, null);
+    return null;
+  }
+};
+
+const calculateUnitPriceByType = ({
+  unitId,
+  purchaseUnitId,
+  transferUnitId,
+  salesUnitId,
+  purchaseToTransferRate,
+  transferToSalesRate,
+  purchasePrice,
+  unitCostPrice,
+}) => {
+  const p2t = Number(purchaseToTransferRate) || 1;
+  const t2s = Number(transferToSalesRate) || 1;
+  const pieceCost = Number(unitCostPrice);
+
+  if (Number.isFinite(pieceCost) && pieceCost > 0) {
+    if (unitId === salesUnitId) return pieceCost;
+    if (unitId === transferUnitId) return pieceCost * t2s;
+    return pieceCost * p2t * t2s;
+  }
+
+  const basePurchasePrice = Number(purchasePrice) || 0;
+  if (unitId === transferUnitId) {
+    return p2t > 0 ? basePurchasePrice / p2t : 0;
+  }
+  if (unitId === salesUnitId) {
+    const totalRate = p2t * t2s;
+    return totalRate > 0 ? basePurchasePrice / totalRate : 0;
+  }
+  return basePurchasePrice;
+};
 
 const close = () => {
   emit("update:open", false);
@@ -289,7 +338,7 @@ const onPtrSelect = async () => {
       return;
     }
 
-    products.value = sourceProducts.map((item) => {
+    products.value = await Promise.all(sourceProducts.map(async (item) => {
       const quantity = Number(item.qty ?? item.requested_quantity) || 0;
       const purchasePrice = Number(item.purchase_price ?? 0) || 0;
       const productData = getProductData(item.product_id);
@@ -301,19 +350,22 @@ const onPtrSelect = async () => {
       // Get conversion rates from item or product data
       const purchaseToTransferRate = item.purchase_to_transfer_rate || productData?.purchase_to_transfer_rate || 1;
       const transferToSalesRate = item.transfer_to_sales_rate || productData?.transfer_to_sales_rate || 1;
+      const unitCostPrice = await fetchUnitCostPrice(item.product_id);
       
-      // Calculate unit price based on selected unit
-      let unitPrice = purchasePrice;
       const purchaseUnitId = item.purchase_unit?.id || productData?.purchase_unit_id;
       const transferUnitId = item.transfer_unit?.id || productData?.transfer_unit_id;
       const salesUnitId = item.sales_unit?.id || productData?.sales_unit_id;
 
-      
-      if (unitId === transferUnitId) {
-        unitPrice = purchaseToTransferRate > 0 ? purchasePrice / purchaseToTransferRate : 0;
-      } else if (unitId === salesUnitId) {
-        unitPrice = (purchaseToTransferRate * transferToSalesRate) > 0 ? purchasePrice / (purchaseToTransferRate * transferToSalesRate) : 0;
-      }
+      const unitPrice = calculateUnitPriceByType({
+        unitId,
+        purchaseUnitId,
+        transferUnitId,
+        salesUnitId,
+        purchaseToTransferRate,
+        transferToSalesRate,
+        purchasePrice,
+        unitCostPrice,
+      });
       
       return {
         product_id: item.product_id,
@@ -323,6 +375,7 @@ const onPtrSelect = async () => {
         unit: item.unit || "N/A",
         unit_id: unitId,
         purchase_price: purchasePrice,
+        unit_cost_price: unitCostPrice,
         purchase_to_transfer_rate: purchaseToTransferRate,
         transfer_to_sales_rate: transferToSalesRate,
         // Add new attributes
@@ -335,7 +388,7 @@ const onPtrSelect = async () => {
         total: quantity * unitPrice,
         isManual: false,
       };
-    });
+    }));
   } catch (error) {
     console.error("Failed to load PTR details:", error);
     products.value = [];
@@ -352,6 +405,7 @@ const addProduct = () => {
     unit: "",
     unit_id: null,
     purchase_price: 0,
+    unit_cost_price: null,
     purchase_to_transfer_rate: 1,
     transfer_to_sales_rate: 1,
     // Add new attributes
@@ -368,7 +422,7 @@ const addProduct = () => {
 
 const removeProduct = (index) => products.value.splice(index, 1);
 
-const onProductSelect = (index) => {
+const onProductSelect = async (index) => {
   const p = products.value[index];
   const prod = props.availableProducts.find((a) => a.id === p.product_id);
 
@@ -384,32 +438,36 @@ const onProductSelect = (index) => {
     p.purchase_unit = prod.purchase_unit;
     p.transfer_unit = prod.transfer_unit;
     p.sales_unit = prod.sales_unit;
+    p.unit_cost_price = await fetchUnitCostPrice(prod.id);
     // Set default unit to purchase unit
     p.unit_id = prod.purchase_unit_id;
     p.unit = prod.purchase_unit?.name || "N/A";
-    // Purchase unit price is same as purchase price
-    p.unit_price = prod.purchase_price || 0;
+    p.unit_price = calculateUnitPriceByType({
+      unitId: p.unit_id,
+      purchaseUnitId: p.purchase_unit_id,
+      transferUnitId: p.transfer_unit_id,
+      salesUnitId: p.sales_unit_id,
+      purchaseToTransferRate: p.purchase_to_transfer_rate,
+      transferToSalesRate: p.transfer_to_sales_rate,
+      purchasePrice: p.purchase_price,
+      unitCostPrice: p.unit_cost_price,
+    });
     calculateTotal(index);
   }
 };
 
 const calculateUnitPrice = (index) => {
   const p = products.value[index];
-  const basePurchasePrice = Number(p.purchase_price) || 0;
-  const purchaseToTransferRate = Number(p.purchase_to_transfer_rate) || 1;
-  const transferToSalesRate = Number(p.transfer_to_sales_rate) || 1;
-  
-  if (p.unit_id === p.purchase_unit_id) {
-    // Purchase Unit: Use purchase price directly
-    p.unit_price = basePurchasePrice;
-  } else if (p.unit_id === p.transfer_unit_id) {
-    // Transfer Unit: purchase_price / purchase_to_transfer_rate
-    p.unit_price = purchaseToTransferRate > 0 ? basePurchasePrice / purchaseToTransferRate : 0;
-  } else if (p.unit_id === p.sales_unit_id) {
-    // Sales Unit: purchase_price / (purchase_to_transfer_rate * transfer_to_sales_rate)
-    const totalRate = purchaseToTransferRate * transferToSalesRate;
-    p.unit_price = totalRate > 0 ? basePurchasePrice / totalRate : 0;
-  }
+  p.unit_price = calculateUnitPriceByType({
+    unitId: p.unit_id,
+    purchaseUnitId: p.purchase_unit_id,
+    transferUnitId: p.transfer_unit_id,
+    salesUnitId: p.sales_unit_id,
+    purchaseToTransferRate: p.purchase_to_transfer_rate,
+    transferToSalesRate: p.transfer_to_sales_rate,
+    purchasePrice: p.purchase_price,
+    unitCostPrice: p.unit_cost_price,
+  });
 };
 
 const onUnitSelect = (index) => {
@@ -424,22 +482,7 @@ const onUnitSelect = (index) => {
       p.unit = selectedUnit.name;
     }
     
-    // Calculate unit price based on selected unit
-    const basePurchasePrice = Number(p.purchase_price) || 0;
-    const purchaseToTransferRate = Number(p.purchase_to_transfer_rate) || 1;
-    const transferToSalesRate = Number(p.transfer_to_sales_rate) || 1;
-    
-    if (p.unit_id === p.purchase_unit_id) {
-      // Purchase Unit: Use purchase price directly
-      p.unit_price = basePurchasePrice;
-    } else if (p.unit_id === p.transfer_unit_id) {
-      // Transfer Unit: purchase_price / purchase_to_transfer_rate
-      p.unit_price = purchaseToTransferRate > 0 ? basePurchasePrice / purchaseToTransferRate : 0;
-    } else if (p.unit_id === p.sales_unit_id) {
-      // Sales Unit: purchase_price / (purchase_to_transfer_rate * transfer_to_sales_rate)
-      const totalRate = purchaseToTransferRate * transferToSalesRate;
-      p.unit_price = totalRate > 0 ? basePurchasePrice / totalRate : 0;
-    }
+    calculateUnitPrice(index);
     
     // Recalculate total with new unit price
     calculateTotal(index);

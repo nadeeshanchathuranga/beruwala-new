@@ -1024,7 +1024,6 @@ const submit = () => {
           barcode: form.barcode || "Auto-generated",
           brand_id: form.brand_id,
           category_id: form.category_id,
-          purchase_price: form.purchase_price,
           selling_price: form.selling_price,
           store_quantity_in_purchase_unit: form.store_quantity_in_purchase_unit,
           shop_quantity_in_sales_unit: form.shop_quantity_in_sales_unit,
@@ -1152,52 +1151,6 @@ const page = usePage();
 //       }
 //   }
 // };
-
-/**
- * Fetch purchase price from goods_received_notes_products table
- * based on product_id and batch_number
- */
-const fetchPurchasePriceByBatch = async (productId, batchNumber) => {
-  if (!productId || !batchNumber) {
-    form.purchase_price = 0;
-    return;
-  }
-
-  try {
-    const response = await fetch('/products/pricing-by-batch', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content,
-      },
-      body: JSON.stringify({
-        product_id: productId,
-        batch_number: batchNumber,
-      }),
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.success && data.purchase_price) {
-        form.purchase_price = parseFloat(data.purchase_price).toFixed(2);
-      } else {
-        form.purchase_price = 0;
-      }
-    } else {
-      form.purchase_price = 0;
-    }
-  } catch (error) {
-    console.error('Error fetching purchase price:', error);
-    form.purchase_price = 0;
-  }
-};
-
-// Watch for modal open and fetch purchase price if product has batch
-const watchOpen = watch(() => props.open, (newVal) => {
-  if (newVal && props.selectedProduct && props.selectedProduct.current_batch) {
-    fetchPurchasePriceByBatch(props.selectedProduct.id, props.selectedProduct.current_batch.batch_number);
-  }
-});
 
 const closeModal = () => {
   emit("update:open", false);
