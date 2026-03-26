@@ -5,9 +5,7 @@ use App\Models\Product;
 use App\Models\Quotation;
 use App\Models\QuotationProduct;
 use App\Models\Customer;
-use App\Models\Income;
 use App\Models\CompanyInformation;
-use App\Models\ProductMovement;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Type;
@@ -16,6 +14,8 @@ use App\Models\Discount;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 
 
@@ -152,7 +152,7 @@ $discounts = Discount::select('id', 'name')
             'quotation_no'   => $quotationNo,
             'type'           => $type,
             'customer_id'    => $customerId, // ✅ null safe
-            'user_id'        => auth()->id(),
+            'user_id'        => Auth::id(),
             'total_amount'   => round($totalAmount, 2),
             'discount'       => round($discount, 2),
             'quotation_date' => $quotationDate,
@@ -161,7 +161,7 @@ $discounts = Discount::select('id', 'name')
 
         foreach ($itemsData as $item) {
             QuotationProduct::create([
-                'quotation_id' => $quotation->id,
+                'quotation_id' => $quotation->getKey(),
                 'product_id'   => $item['product_id'],
                 'quantity'     => $item['quantity'],
                 'price'        => $item['price'],
@@ -179,7 +179,7 @@ $discounts = Discount::select('id', 'name')
 
 
         DB::rollBack();
-        \Log::error('Quotation store error', ['error' => $e->getMessage()]);
+        Log::error('Quotation store error', ['error' => $e->getMessage()]);
 
         // Remove dd() for production
         return back()
@@ -411,7 +411,7 @@ $discounts = Discount::select('id', 'name')
         $quotation->update([
             'type'           => $type,
             'customer_id'    => $customerId, // ✅ null safe
-            'user_id'        => auth()->id(),
+            'user_id'        => Auth::id(),
             'total_amount'   => round($totalAmount, 2),
             'discount'       => round($discount, 2),
             'quotation_date' => $quotationDate,
@@ -419,11 +419,11 @@ $discounts = Discount::select('id', 'name')
         ]);
 
         // 🔹 Replace quotation products
-        QuotationProduct::where('quotation_id', $quotation->id)->delete();
+        QuotationProduct::where('quotation_id', $quotation->getKey())->delete();
 
         foreach ($itemsData as $item) {
             QuotationProduct::create([
-                'quotation_id' => $quotation->id,
+                'quotation_id' => $quotation->getKey(),
                 'product_id'   => $item['product_id'],
                 'quantity'     => $item['quantity'],
                 'price'        => $item['price'],
@@ -434,13 +434,13 @@ $discounts = Discount::select('id', 'name')
         DB::commit();
 
         return redirect()
-            ->route('quotations.edit', $quotation->id)
+            ->route('quotations.edit', $quotation->getKey())
             ->with('success', 'Quotation updated successfully! No: ' . $quotation->quotation_no);
 
     } catch (\Exception $e) {
 
         DB::rollBack();
-        \Log::error('Quotation update error', ['error' => $e->getMessage()]);
+        Log::error('Quotation update error', ['error' => $e->getMessage()]);
 
         return back()
             ->withInput()

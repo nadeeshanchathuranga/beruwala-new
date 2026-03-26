@@ -818,13 +818,61 @@ const selectedQuotationId = ref(props.quotation?.id || "");
 const isLoading = ref(false);
 const autoLoadTriggered = ref(false);
 
+const normalizeDateForInput = (value) => {
+  if (!value) return new Date().toISOString().split("T")[0];
+
+  if (typeof value === "string") {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+    if (value.includes("T")) return value.split("T")[0];
+    if (value.includes(" ")) return value.split(" ")[0];
+  }
+
+  const parsedDate = new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return new Date().toISOString().split("T")[0];
+  }
+
+  return parsedDate.toISOString().split("T")[0];
+};
+
+const cloneQuotationItems = (items = []) => {
+  return items.map((item) => ({
+    ...item,
+    product_id: item.product_id,
+    product_name: item.product_name || item.product?.name || "Unknown Product",
+    quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+    price: Number(item.price) || 0,
+    total: Number(item.total) || (Number(item.quantity) || 0) * (Number(item.price) || 0),
+  }));
+};
+
+const hydrateFormFromQuotation = (quotation) => {
+  if (!quotation) return;
+
+  selectedQuotationId.value = quotation.id || "";
+  form.quotation_no = quotation.quotation_no || "";
+  form.customer_id = quotation.customer_id || "";
+  form.customer_type = quotation.customer_type || "retail";
+  form.quotation_date = normalizeDateForInput(quotation.quotation_date);
+  form.items = cloneQuotationItems(quotation.items || []);
+  form.discount = Number(quotation.discount) || 0;
+};
+
+const resetQuotationForm = () => {
+  form.quotation_no = "";
+  form.customer_id = "";
+  form.customer_type = "retail";
+  form.quotation_date = new Date().toISOString().split("T")[0];
+  form.items = [];
+  form.discount = 0;
+};
+
 const form = useForm({
   quotation_no: props.quotation?.quotation_no || "",
   customer_id: props.quotation?.customer_id || "",
   customer_type: props.quotation?.customer_type || "retail",
-  quotation_date:
-    props.quotation?.quotation_date || new Date().toISOString().split("T")[0],
-  items: props.quotation?.items || [],
+  quotation_date: normalizeDateForInput(props.quotation?.quotation_date),
+  items: cloneQuotationItems(props.quotation?.items || []),
   discount: props.quotation?.discount || 0,
 });
 
@@ -847,12 +895,7 @@ const companyDetails = computed(() => {
 const loadQuotation = async () => {
   if (!selectedQuotationId.value) {
     // Reset form if no quotation selected
-    form.quotation_no = "";
-    form.customer_id = "";
-    form.customer_type = "retail";
-    form.quotation_date = new Date().toISOString().split("T")[0];
-    form.items = [];
-    form.discount = 0;
+    resetQuotationForm();
     return;
   }
 
@@ -887,17 +930,12 @@ watch(
   () => props.quotation,
   (newQuotation) => {
     if (newQuotation) {
-      selectedQuotationId.value = newQuotation.id;
-      form.quotation_no = newQuotation.quotation_no;
-      form.customer_id = newQuotation.customer_id || "";
-      form.customer_type = newQuotation.customer_type || "retail";
-      form.quotation_date =
-        newQuotation.quotation_date || new Date().toISOString().split("T")[0];
-      form.items = newQuotation.items ? [...newQuotation.items] : [];
-      form.discount = newQuotation.discount || 0;
+      hydrateFormFromQuotation(newQuotation);
+    } else {
+      resetQuotationForm();
     }
   },
-  { immediate: true, deep: true }
+  { immediate: true }
 );
 
 const barcodeInput = ref("");

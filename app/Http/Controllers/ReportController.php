@@ -13,9 +13,8 @@ use App\Models\GoodsReceivedNoteProduct;
 use App\Models\GoodsReceivedNoteReturn;
 use App\Models\CompanyInformation;
 use App\Models\ProductMovement;
-use App\Models\SalesProduct;
-use App\Models\SalesReturnProduct;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Maatwebsite\Excel\Facades\Excel;
@@ -273,7 +272,7 @@ class ReportController extends Controller
      * and expense summaries for the specified date range.
      *
      * @param Request $request - Contains start_date and end_date parameters
-     * @return \Illuminate\Http\Response PDF download
+    * @return \Symfony\Component\HttpFoundation\Response PDF download
      */
    public function exportPdf(Request $request)
 {
@@ -313,7 +312,7 @@ class ReportController extends Controller
      * - Expense summary
      *
      * @param Request $request - Contains start_date and end_date parameters
-     * @return \Illuminate\Http\Response CSV stream download
+    * @return \Symfony\Component\HttpFoundation\Response CSV stream download
      */
     public function exportExcel(Request $request)
     {
@@ -361,7 +360,7 @@ class ReportController extends Controller
      * Generates a PDF showing current stock levels for all products
      * with retail and wholesale pricing information.
      *
-     * @return \Illuminate\Http\Response PDF download
+    * @return \Symfony\Component\HttpFoundation\Response PDF download
      */
     public function exportProductStockPdf()
     {
@@ -416,7 +415,7 @@ class ReportController extends Controller
      * Streams a CSV file with columns:
      * Product Name, Quantity, Retail Price, Wholesale Price
      *
-     * @return \Illuminate\Http\Response CSV stream download
+    * @return \Symfony\Component\HttpFoundation\Response CSV stream download
      */
     public function exportProductStockExcel()
     {
@@ -469,7 +468,7 @@ class ReportController extends Controller
      * date range, including category breakdown and totals.
      *
      * @param Request $request - Contains start_date and end_date parameters
-     * @return \Illuminate\Http\Response PDF download
+    * @return \Symfony\Component\HttpFoundation\Response PDF download
      */
     public function exportExpensesPdf(Request $request)
     {
@@ -527,7 +526,7 @@ class ReportController extends Controller
      * Supports filtering by date range and supplier.
      *
      * @param Request $request - Contains start_date, end_date, and optional supplier_id parameters
-     * @return \Illuminate\Http\Response Excel file download
+    * @return \Symfony\Component\HttpFoundation\Response Excel file download
      */
     public function exportExpensesExcel(Request $request)
     {
@@ -549,7 +548,7 @@ class ReportController extends Controller
      * - Total amounts and transaction counts
      *
      * @param Request $request - Contains start_date and end_date parameters
-     * @return \Illuminate\Http\Response PDF download
+    * @return \Symfony\Component\HttpFoundation\Response PDF download
      */
     public function exportIncomePdf(Request $request)
     {
@@ -602,7 +601,7 @@ class ReportController extends Controller
      * Payment Type, Amount, Transaction Count
      *
      * @param Request $request - Contains start_date and end_date parameters
-     * @return \Illuminate\Http\Response CSV stream download
+    * @return \Symfony\Component\HttpFoundation\Response CSV stream download
      */
     public function exportIncomeExcel(Request $request)
     {
@@ -658,15 +657,13 @@ class ReportController extends Controller
         $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
         $currency = $request->input('currency', CompanyInformation::first()?->currency ?? 'Rs.');
 
-        $paymentTypes = ['Cash', 'Card', 'Credit'];
-
         // Fetch all income records with sale information
         $salesIncomeList = Income::with('sale')
             ->whereBetween('income_date', [$startDate, $endDate])
             ->orderBy('income_date', 'desc')
             ->orderBy('id', 'desc')
             ->get()
-            ->map(function ($item) use ($paymentTypes) {
+            ->map(function ($item) {
                 $isReturn = in_array($item->transaction_type, ['product_return', 'cash_return']);
                 $type = $isReturn ? 'Return' : 'Income';
                 return [
@@ -677,7 +674,7 @@ class ReportController extends Controller
                     'type' => $type,
                     'is_return' => $isReturn,
                     'payment_type' => $item->payment_type,
-                    'payment_type_name' => $paymentTypes[$item->payment_type] ?? 'Unknown',
+                    'payment_type_name' => $this->getIncomePaymentTypeName($item->payment_type, $item->card_type),
                     'transaction_type' => $item->transaction_type ?? 'sale',
                 ];
             });
@@ -703,7 +700,7 @@ class ReportController extends Controller
             'currency' => $currency,
         ];
 
-        $pdf = PDF::loadView('pdf.sales-income-report', $data);
+        $pdf = Pdf::loadView('pdf.sales-income-report', $data);
         return $pdf->download('sales-income-report-' . date('Y-m-d') . '.pdf');
     }
 
@@ -716,15 +713,13 @@ class ReportController extends Controller
         $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
         $currency = $request->input('currency', CompanyInformation::first()?->currency ?? 'Rs.');
 
-        $paymentTypes = ['Cash', 'Card', 'Credit'];
-
         // Fetch all income records with sale information
         $salesIncomeList = Income::with('sale')
             ->whereBetween('income_date', [$startDate, $endDate])
             ->orderBy('income_date', 'desc')
             ->orderBy('id', 'desc')
             ->get()
-            ->map(function ($item) use ($paymentTypes) {
+            ->map(function ($item) {
                 $isReturn = in_array($item->transaction_type, ['product_return', 'cash_return']);
                 $type = $isReturn ? 'Return' : 'Income';
                 return [
@@ -735,7 +730,7 @@ class ReportController extends Controller
                     'type' => $type,
                     'is_return' => $isReturn,
                     'payment_type' => $item->payment_type,
-                    'payment_type_name' => $paymentTypes[$item->payment_type] ?? 'Unknown',
+                    'payment_type_name' => $this->getIncomePaymentTypeName($item->payment_type, $item->card_type),
                     'transaction_type' => $item->transaction_type ?? 'sale',
                 ];
             });
@@ -790,7 +785,7 @@ class ReportController extends Controller
                 }
             ])
             ->get()
-            ->map(function ($product) {
+            ->map(function ($product) use ($currency) {
                 $totalSalesQty = $product->salesProducts->sum('quantity');
                 $totalSalesAmount = $product->salesProducts->sum('total');
                 $totalReturnsQty = $product->returnProducts->sum('quantity');
@@ -853,7 +848,7 @@ class ReportController extends Controller
                 }
             ])
             ->get()
-            ->map(function ($product) {
+            ->map(function ($product) use ($currency) {
                 $totalSalesQty = $product->salesProducts->sum('quantity');
                 $totalSalesAmount = $product->salesProducts->sum('total');
                 $totalReturnsQty = $product->returnProducts->sum('quantity');
@@ -1244,7 +1239,7 @@ class ReportController extends Controller
      * Export Product Movement Sales Optimization report as PDF
      *
      * @param Request $request
-     * @return \Illuminate\Http\Response
+    * @return \Symfony\Component\HttpFoundation\Response
      */
     public function exportProductMovementSalesOptimizationPdf(Request $request)
     {
@@ -1334,7 +1329,7 @@ class ReportController extends Controller
      * Export Product Movement Sales Optimization report as CSV
      *
      * @param Request $request
-     * @return \Illuminate\Http\Response
+    * @return \Symfony\Component\HttpFoundation\Response
      */
     public function exportProductMovementSalesOptimizationCsv(Request $request)
     {
@@ -1667,8 +1662,6 @@ class ReportController extends Controller
         $startDate = $request->input('start_date', Carbon::now()->startOfMonth()->format('Y-m-d'));
         $endDate = $request->input('end_date', Carbon::now()->format('Y-m-d'));
 
-        $paymentTypes = ['Cash', 'Card', 'Credit'];
-
         // Fetch paginated income records with sale information
         $salesIncomeList = Income::with('sale')
             ->whereBetween('income_date', [$startDate, $endDate])
@@ -1678,7 +1671,7 @@ class ReportController extends Controller
             ->withQueryString();
 
         // Transform the paginated collection
-        $salesIncomeList->getCollection()->transform(function ($item) use ($paymentTypes) {
+        $salesIncomeList->getCollection()->transform(function ($item) {
             $isReturn = in_array($item->transaction_type, ['product_return', 'cash_return']);
             $type = $isReturn ? 'Return' : 'Income';
 
@@ -1690,7 +1683,7 @@ class ReportController extends Controller
                 'type' => $type,
                 'is_return' => $isReturn,
                 'payment_type' => $item->payment_type,
-                'payment_type_name' => $paymentTypes[$item->payment_type] ?? 'Unknown',
+                'payment_type_name' => $this->getIncomePaymentTypeName($item->payment_type, $item->card_type),
                 'transaction_type' => $item->transaction_type ?? 'sale',
             ];
         });
@@ -1706,6 +1699,31 @@ class ReportController extends Controller
 
         $netIncome = $totalIncome - $totalReturns;
 
+        $paymentTypeLabels = [
+            0 => 'Cash',
+            1 => 'Card',
+            2 => 'Credit',
+        ];
+
+        $paymentTypeSums = Income::select('payment_type', DB::raw('SUM(amount) as total_amount'))
+            ->whereBetween('income_date', [$startDate, $endDate])
+            ->whereNotIn('transaction_type', ['product_return', 'cash_return'])
+            ->groupBy('payment_type')
+            ->pluck('total_amount', 'payment_type');
+
+        $paymentMethodTotals = collect($paymentTypeLabels)
+            ->map(function ($label, $paymentType) use ($paymentTypeSums) {
+                $total = (float) ($paymentTypeSums[$paymentType] ?? 0);
+
+                return [
+                    'payment_type' => (int) $paymentType,
+                    'label' => $label,
+                    'total' => $total,
+                    'formatted_total' => number_format($total, 2),
+                ];
+            })
+            ->values();
+
         $currencySymbol = CompanyInformation::first();
         $currency = $currencySymbol?->currency ?? 'Rs.';
 
@@ -1719,6 +1737,32 @@ class ReportController extends Controller
             'currencySymbol' => $currencySymbol,
             'currency' => $currency,
         ]);
+    }
+
+    private function getIncomePaymentTypeName($paymentType, $cardType = null): string
+    {
+        $paymentType = (int) $paymentType;
+
+        if ($paymentType === 1) {
+            $resolvedCardType = strtolower((string) $cardType);
+
+            if ($resolvedCardType === 'visa') {
+                return 'Visa';
+            }
+
+            if ($resolvedCardType === 'mastercard') {
+                return 'MasterCard';
+            }
+
+            return 'Card';
+        }
+
+        $paymentTypes = [
+            0 => 'Cash',
+            2 => 'Credit',
+        ];
+
+        return $paymentTypes[$paymentType] ?? 'Unknown';
     }
 
     /**
@@ -1789,7 +1833,7 @@ class ReportController extends Controller
      * Uses the view: reports.Components.good-receive-note-pdf.blade.php
      *
      * @param Request $request - Contains start_date and end_date parameters
-     * @return \Illuminate\Http\Response PDF download or error redirect
+    * @return \Symfony\Component\HttpFoundation\Response PDF download or error redirect
      */
     public function exportGoodReceiveNotePdf(Request $request)
     {
@@ -1812,7 +1856,7 @@ class ReportController extends Controller
 
             return back()->with('error', 'PDF export not available. Install barryvdh/laravel-dompdf package.');
         } catch (\Exception $e) {
-            \Log::error('GRN PDF Export Error: ' . $e->getMessage());
+            Log::error('GRN PDF Export Error: ' . $e->getMessage());
             return back()->with('error', 'Failed to generate PDF: ' . $e->getMessage());
         }
     }
@@ -1824,7 +1868,7 @@ class ReportController extends Controller
      * Date, GRN No, Supplier, Total Quantity, Subtotal, Discount, Tax, Grand Total
      *
      * @param Request $request - Contains start_date and end_date parameters
-     * @return \Illuminate\Http\Response CSV stream download
+    * @return \Symfony\Component\HttpFoundation\Response CSV stream download
      */
     public function exportGoodReceiveNoteExcel(Request $request)
     {
@@ -1876,7 +1920,7 @@ class ReportController extends Controller
      * Uses the view: reports.Components.grn-return-pdf.blade.php
      *
      * @param Request $request - Contains start_date and end_date parameters
-     * @return \Illuminate\Http\Response PDF download or error redirect
+    * @return \Symfony\Component\HttpFoundation\Response PDF download or error redirect
      */
     public function exportGoodReceiveNoteReturnPdf(Request $request)
     {
@@ -1900,7 +1944,7 @@ class ReportController extends Controller
 
             return back()->with('error', 'PDF export not available. Install barryvdh/laravel-dompdf package.');
         } catch (\Exception $e) {
-            \Log::error('GRN Return PDF Export Error: ' . $e->getMessage());
+            Log::error('GRN Return PDF Export Error: ' . $e->getMessage());
             return back()->with('error', 'Failed to generate PDF: ' . $e->getMessage());
         }
     }
@@ -1912,7 +1956,7 @@ class ReportController extends Controller
      * Date, GRN No, Handled By, Total Quantity, Estimated Value
      *
      * @param Request $request - Contains start_date and end_date parameters
-     * @return \Illuminate\Http\Response CSV stream download
+    * @return \Symfony\Component\HttpFoundation\Response CSV stream download
      */
     public function exportGoodReceiveNoteReturnExcel(Request $request)
     {
@@ -1964,7 +2008,7 @@ class ReportController extends Controller
      * Uses the view: reports.Components.product-movement-pdf.blade.php
      *
      * @param Request $request - Contains start_date, end_date, and optional product_id
-     * @return \Illuminate\Http\Response PDF download or error redirect
+    * @return \Symfony\Component\HttpFoundation\Response PDF download or error redirect
      */
     public function exportProductMovementPdf(Request $request)
     {
@@ -1989,7 +2033,7 @@ class ReportController extends Controller
 
             return back()->with('error', 'PDF export not available. Install barryvdh/laravel-dompdf package.');
         } catch (\Exception $e) {
-            \Log::error('Product Movement PDF Export Error: ' . $e->getMessage());
+            Log::error('Product Movement PDF Export Error: ' . $e->getMessage());
             return back()->with('error', 'Failed to generate PDF: ' . $e->getMessage());
         }
     }
@@ -2001,7 +2045,7 @@ class ReportController extends Controller
      * Date, Product, Product Code, Movement Type, Quantity, Reference
      *
      * @param Request $request - Contains start_date, end_date, and optional product_id
-     * @return \Illuminate\Http\Response CSV stream download
+    * @return \Symfony\Component\HttpFoundation\Response CSV stream download
      */
     public function exportProductMovementExcel(Request $request)
     {

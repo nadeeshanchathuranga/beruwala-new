@@ -20,6 +20,7 @@ class GoodsReceivedNote extends Model
         'goods_received_note_date',
         'subtotal',
         'discount',
+        'discount_type',
         'tax_total',
         'remarks',
         'status',

@@ -15,7 +15,12 @@ class Supplier extends Model
         'email',
         'phone_number',
         'address',
+        'due_date',
         'status',
+    ];
+
+    protected $casts = [
+        'due_date' => 'date',
     ];
 
     public function goodsReceivedNotes()

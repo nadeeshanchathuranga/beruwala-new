@@ -59,7 +59,7 @@
           <div class="flex flex-col gap-1">
             <span class="text-sm font-medium text-gray-600">Discount:</span>
             <span class="text-gray-900 font-semibold">{{
-              formatNumber(totalProductDiscount)
+              formatDiscount(grn.discount, grn.discount_type)
             }}</span>
           </div>
           <div class="flex flex-col gap-1">
@@ -159,20 +159,24 @@ const props = defineProps({
 
 const emit = defineEmits(["update:open"]);
 
+const floorToWhole = (value) => {
+  const numericValue = Number(value) || 0;
+  return Math.floor(numericValue);
+};
+
 const close = () => {
   emit("update:open", false);
 };
 
 const totalProductDiscount = computed(() => {
-  if (!props.grn?.goods_received_note_products) return 0;
-  return props.grn.goods_received_note_products.reduce((sum, p) => sum + (parseFloat(p.discount) || 0), 0);
+  return parseFloat(props.grn?.discount) || 0;
 });
 
 const grandTotal = computed(() => {
   const subtotal = parseFloat(props.grn?.subtotal) || 0;
   const discount = totalProductDiscount.value;
   const taxTotal = parseFloat(props.grn?.tax_total) || 0;
-  return subtotal - discount + taxTotal;
+  return floorToWhole(subtotal - discount + taxTotal);
 });
 
 const formatDate = (date) => {
@@ -185,10 +189,17 @@ const formatDate = (date) => {
 };
 
 const formatNumber = (number) => {
-  return parseFloat(number || 0).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  return floorToWhole(number).toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
+};
+
+const formatDiscount = (discount, discountType) => {
+  const formattedDiscount = formatNumber(discount);
+  return discountType === "percentage"
+    ? `${formattedDiscount} (%)`
+    : `${formattedDiscount}`;
 };
 
 const getStatusText = (status) => {

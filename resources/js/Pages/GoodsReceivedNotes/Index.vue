@@ -73,9 +73,7 @@
               </td>
               <td class="px-4 py-4">
                 <span class="text-sm text-gray-800">{{
-                  formatNumber(
-                    (goodsReceivedNote.goods_received_note_products || []).reduce((sum, p) => sum + (parseFloat(p.discount) || 0), 0)
-                  )
+                  formatDiscount(goodsReceivedNote.discount, goodsReceivedNote.discount_type)
                 }}</span>
               </td>
               <td class="px-4 py-4">
@@ -215,10 +213,17 @@ const formatDate = (date) => {
 };
 
 const formatNumber = (number) => {
-  return parseFloat(number || 0).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  return Math.floor(parseFloat(number || 0)).toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
+};
+
+const formatDiscount = (discount, discountType) => {
+  const formattedDiscount = formatNumber(discount);
+  return discountType === "percentage"
+    ? `${formattedDiscount} (%)`
+    : `${formattedDiscount}`;
 };
 </script>
 

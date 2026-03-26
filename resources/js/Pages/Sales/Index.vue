@@ -253,7 +253,7 @@
                             <tr v-if="form.payments && form.payments.length">
                               <td colspan="5" class="text-left py-1">
                                 <span v-for="(p, idx) in form.payments" :key="idx" class="mr-4">
-                                  {{ getPaymentTypeText(p.payment_type) }}: {{ page.props.currency || '' }}{{ p.amount }}
+                                  {{ getPaymentTypeText(p.payment_type, p.card_type) }}: {{ page.props.currency || '' }}{{ p.amount }}
                                 </span>
                               </td>
                             </tr>
@@ -428,7 +428,7 @@
                     >
                       <div>
                         <span class="font-medium text-white">{{
-                          getPaymentTypeText(payment.payment_type)
+                          getPaymentTypeText(payment.payment_type, payment.card_type)
                         }}</span>
                       </div>
                       <div class="flex items-center gap-2">
@@ -832,6 +832,19 @@
             </select>
           </div>
 
+          <div v-if="paymentMethod === 1">
+            <label class="block text-sm font-medium text-gray-700 mb-2"
+              >Card Type</label
+            >
+            <select
+              v-model="paymentCardType"
+              class="w-full px-4 py-3 bg-white text-gray-800 border border-gray-300 rounded-[5px] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="visa">Visa</option>
+              <option value="mastercard">MasterCard</option>
+            </select>
+          </div>
+
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2"
               >Amount ({{ page.props.currency || "Rs." }})</label
@@ -927,7 +940,7 @@
         <hr class="my-2 border-black" />
         <div class="mb-2 text-sm">
           <p><strong>Customer:</strong> {{ completedCustomer }}</p>
-          <p><strong>Payment:</strong> {{ getPaymentTypeText(completedPaymentType) }}</p>
+          <p><strong>Payment:</strong> {{ getPaymentTypeText(completedPaymentType, completedCardType) }}</p>
           <p v-if="bill.address">{{ bill.address }}</p>
           <p v-if="bill.mobile_1 || bill.mobile_2">
             Tel: {{ [bill.mobile_1, bill.mobile_2].filter(Boolean).join(" / ") }}
@@ -1060,11 +1073,13 @@ const showPaymentModal = ref(false);
 const showProductModal = ref(false);
 const showQuickAddCustomer = ref(false);
 const paymentMethod = ref(0);
+const paymentCardType = ref("visa");
 const paymentAmount = ref(0);
 const completedInvoice = ref("");
 const completedSaleDate = ref("");
 const completedCustomer = ref("");
 const completedPaymentType = ref(0);
+const completedCardType = ref(null);
 const completedItems = ref([]);
 const completedTotal = ref("0.00");
 const completedProductDiscount = ref("0.00");
@@ -1219,10 +1234,18 @@ const endIndex = computed(() => {
 });
 
 // Get payment type text
-const getPaymentTypeText = (type) => {
+const getCardTypeText = (cardType) => {
+  const cardTypes = {
+    visa: "Visa",
+    mastercard: "MasterCard",
+  };
+  return cardTypes[cardType] || "Card";
+};
+
+const getPaymentTypeText = (type, cardType = null) => {
   const types = {
     0: "Cash",
-    1: "Card",
+    1: cardType ? `Card (${getCardTypeText(cardType)})` : "Card",
     //  2: 'Credit'
   };
   return types[type] || "Cash";
@@ -1395,6 +1418,11 @@ const addPayment = async () => {
     return;
   }
 
+  if (paymentMethod.value === 1 && !paymentCardType.value) {
+    alert("Please select card type");
+    return;
+  }
+
   const remaining = netAmount.value - totalPaid.value;
   // Allow overpayment only for cash
   if (paymentMethod.value !== 0 && paymentAmount.value > remaining) {
@@ -1405,16 +1433,21 @@ const addPayment = async () => {
   form.payments.push({
     payment_type: paymentMethod.value,
     amount: parseFloat(paymentAmount.value),
+    card_type: paymentMethod.value === 1 ? paymentCardType.value : null,
   });
 
   await logActivity("create", "sales", {
     action: "add_payment",
-    payment_type: getPaymentTypeText(paymentMethod.value),
+    payment_type: getPaymentTypeText(
+      paymentMethod.value,
+      paymentMethod.value === 1 ? paymentCardType.value : null
+    ),
     amount: paymentAmount.value,
   });
 
   paymentAmount.value = 0;
   paymentMethod.value = 0;
+  paymentCardType.value = "visa";
 
   // Auto-close modal if fully paid or overpaid (for cash)
   if (balance.value <= 0) {
@@ -1617,6 +1650,8 @@ const submitSale = () => {
     props.customers.find((c) => c.id === form.customer_id)?.name || "";
   completedPaymentType.value =
     form.payments.length > 0 ? form.payments[0].payment_type : 0;
+  completedCardType.value =
+    form.payments.length > 0 ? (form.payments[0].card_type || null) : null;
   completedItems.value = [...form.items];
   completedTotal.value = (originalTotal.value||0).toFixed(2);
   completedProductDiscount.value = (totalProductDiscount.value||0).toFixed(2);
@@ -1872,7 +1907,7 @@ const printReceipt = () => {
                     </div>
                     <div class="info-row">
                         <span><strong>Payment:</strong></span>
-                        <span>${getPaymentTypeText(completedPaymentType.value)}</span>
+                        <span>${getPaymentTypeText(completedPaymentType.value, completedCardType.value)}</span>
                     </div>
                 </div>
 

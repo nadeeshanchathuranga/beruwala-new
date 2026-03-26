@@ -97,10 +97,12 @@ class GoodReceiveNoteController extends Controller
         $validated = $request->validate([
             'goods_received_note_no'   => 'required|string|unique:goods_received_notes,goods_received_note_no',
             'supplier_id'   => 'required|exists:suppliers,id',
+            'supplier_due_date' => 'nullable|date',
             'goods_received_note_date'      => 'required|date',
             'batch_number'  => 'nullable|string',
             'subtotal'      => 'nullable|numeric|min:0',
             'discount'      => 'nullable|numeric|min:0',
+            'discount_type' => 'required|in:amount,percentage',
             'tax_total'     => 'nullable|numeric|min:0',
             'remarks'       => 'nullable|string',
 
@@ -116,10 +118,27 @@ class GoodReceiveNoteController extends Controller
             'products.*.total'              => 'nullable|numeric',
         ]);
 
+        $productIds = array_map(
+            static fn (array $product): int => (int) ($product['product_id'] ?? 0),
+            $validated['products']
+        );
+
+        if (count($productIds) !== count(array_unique($productIds))) {
+            return redirect()
+                ->back()
+                ->withErrors(['products' => 'Duplicate products are not allowed in a single GRN.'])
+                ->withInput();
+        }
+
         // Start transaction to ensure data consistency across all operations
         DB::beginTransaction();
 
         try {
+            $rawDiscount = (float) ($validated['discount'] ?? 0);
+            $discountType = $validated['discount_type'] ?? 'amount';
+            $grnTaxTotal = (int) floor((float) ($validated['tax_total'] ?? 0));
+            $computedSubtotal = 0;
+
             // Create main GRN record
             $grn = GoodsReceivedNote::create([
                 'purchase_order_request_id'        => null,
@@ -128,13 +147,20 @@ class GoodReceiveNoteController extends Controller
                 'supplier_id'   => $validated['supplier_id'],
                 'user_id'       => Auth::id(),
                 'goods_received_note_date'      => $validated['goods_received_note_date'],
-                'subtotal'      => $validated['subtotal'] ?? 0,
-                'discount'      => $validated['discount'] ?? 0,
-                'tax_total'     => $validated['tax_total'] ?? 0,
+                'subtotal'      => 0,
+                'discount'      => 0,
+                'discount_type' => $discountType,
+                'tax_total'     => $grnTaxTotal,
                 'remarks'       => $validated['remarks'] ?? null,
                 'status'        => 1,   
                 'error'=> null,
             ]);
+
+            if (!empty($validated['supplier_due_date'])) {
+                Supplier::whereKey($validated['supplier_id'])->update([
+                    'due_date' => $validated['supplier_due_date'],
+                ]);
+            }
 
  
             // Process each received product
@@ -148,7 +174,8 @@ class GoodReceiveNoteController extends Controller
                 $issuedQty = (float) ($product['issued_quantity'] ?? 0);
 
                 // Calculate line total: (qty × price) - discount
-                $lineTotal = ($issuedQty * (float)($product['purchase_price'])) - ((float)($product['discount'] ?? 0));
+                $lineTotal = (int) floor(($issuedQty * (float)($product['purchase_price'])) - ((float)($product['discount'] ?? 0)));
+                $computedSubtotal += $lineTotal;
 
                 // Use GRN batch_number for all products in this GRN
                 $batchNumberForProduct = $validated['batch_number'] ?? $product['batch_number'] ?? null;
@@ -222,6 +249,15 @@ class GoodReceiveNoteController extends Controller
                     // Don't auto-calculate transfer units - they will be created when boxes are broken down
                 }
             }
+
+            $grnDiscount = $discountType === 'percentage'
+                ? (int) floor(($computedSubtotal * $rawDiscount) / 100)
+                : (int) floor($rawDiscount);
+
+            $grn->update([
+                'subtotal' => $computedSubtotal,
+                'discount' => $grnDiscount,
+            ]);
 
             // Commit transaction - all operations succeeded
             DB::commit();

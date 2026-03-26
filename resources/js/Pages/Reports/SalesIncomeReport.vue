@@ -224,38 +224,97 @@
             </div>
           </div>
 
-          <!-- Summary in Corner -->
           <div
             v-if="salesIncomeList.data?.length > 0"
-            class="w-80 bg-white rounded-2xl p-6 shadow-sm border border-gray-200 mb-6 sticky top-6 self-start"
+            class="w-80 sticky top-6 self-start space-y-4"
           >
-            <h3
-              class="text-lg font-semibold text-gray-800 mb-4 border-b-2 border-blue-600 pb-2"
-            >
-              Summary
-            </h3>
-            <div class="space-y-4">
-              <div
-                class="flex justify-between items-center pb-3 border-b border-gray-200"
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+              <h3
+                class="text-lg font-semibold text-gray-800 mb-4 border-b-2 border-blue-600 pb-2"
               >
-                <span class="text-sm font-medium text-gray-600">Total Income:</span>
-                <span class="text-xl font-bold text-green-600"
-                  >{{ page.props.currency || "" }} {{ calculatedTotalIncome }}</span
-                >
+                Summary
+              </h3>
+              <div class="space-y-4">
+                <div class="flex justify-between items-center pb-3 border-b border-gray-200">
+                  <span class="text-sm font-medium text-gray-600">Total Income:</span>
+                  <span class="text-xl font-bold text-green-600"
+                    >{{ page.props.currency || "" }} {{ calculatedTotalIncome }}</span
+                  >
+                </div>
+                <div class="flex justify-between items-center pb-3 border-b border-gray-200">
+                  <span class="text-sm font-medium text-gray-600">Total Returns:</span>
+                  <span class="text-xl font-bold text-red-600"
+                    >{{ page.props.currency || "" }} {{ calculatedTotalReturns }}</span
+                  >
+                </div>
+                <div class="flex justify-between items-center pt-2">
+                  <span class="text-base font-bold text-gray-800">Net Income:</span>
+                  <span class="text-2xl font-bold text-blue-600"
+                    >{{ page.props.currency || "" }} {{ calculatedNetIncome }}</span
+                  >
+                </div>
               </div>
-              <div
-                class="flex justify-between items-center pb-3 border-b border-gray-200"
-              >
-                <span class="text-sm font-medium text-gray-600">Total Returns:</span>
-                <span class="text-xl font-bold text-red-600"
-                  >{{ page.props.currency || "" }} {{ calculatedTotalReturns }}</span
-                >
+            </div>
+
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+              <h4 class="text-lg font-semibold text-gray-800 mb-4 border-b-2 border-blue-600 pb-2">
+                Sales by Payment Method
+              </h4>
+
+              <div class="relative w-44 h-44 mx-auto mb-4">
+                <svg viewBox="0 0 120 120" class="w-full h-full">
+                  <g transform="rotate(-90 60 60)">
+                    <circle
+                      cx="60"
+                      cy="60"
+                      :r="donutRadius"
+                      fill="none"
+                      stroke="#e5e7eb"
+                      stroke-width="18"
+                    />
+                    <circle
+                      v-for="segment in donutSegments"
+                      :key="segment.payment_type"
+                      cx="60"
+                      cy="60"
+                      :r="donutRadius"
+                      fill="none"
+                      :stroke="getPaymentStrokeColor(segment.payment_type)"
+                      stroke-width="18"
+                      :stroke-dasharray="`${segment.dash} ${donutCircumference}`"
+                      :stroke-dashoffset="segment.offset"
+                    />
+                  </g>
+                </svg>
+
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div class="text-center">
+                    <div class="text-xs text-gray-500">Total</div>
+                    <div class="text-sm font-bold text-gray-800">
+                      {{ page.props.currency || "" }} {{ totalPaymentAmount.toFixed(2) }}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="flex justify-between items-center pt-2">
-                <span class="text-base font-bold text-gray-800">Net Income:</span>
-                <span class="text-2xl font-bold text-blue-600"
-                  >{{ page.props.currency || "" }} {{ calculatedNetIncome }}</span
+
+              <div class="space-y-2">
+                <div
+                  v-for="item in normalizedPaymentTotals"
+                  :key="item.payment_type"
+                  class="flex items-center justify-between text-xs"
                 >
+                  <div class="flex items-center gap-2">
+                    <span
+                      class="w-2.5 h-2.5 rounded-full"
+                      :style="{ backgroundColor: getPaymentStrokeColor(item.payment_type) }"
+                    ></span>
+                    <span class="font-medium text-gray-600">{{ item.label }}</span>
+                    <span class="text-gray-400">({{ item.percentage.toFixed(1) }}%)</span>
+                  </div>
+                  <span class="font-semibold text-gray-800">
+                    {{ page.props.currency || "" }} {{ item.formatted_total }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -283,6 +342,10 @@ const props = defineProps({
   netIncome: String,
   startDate: String,
   endDate: String,
+  paymentMethodTotals: {
+    type: Array,
+    default: () => [],
+  },
   totalCash: {
     type: String,
     default: '0.00',
@@ -332,6 +395,74 @@ const calculatedNetIncome = computed(() => {
   const returns = parseFloat(calculatedTotalReturns.value || 0);
   return (income - returns).toFixed(2);
 });
+
+const normalizedPaymentTotals = computed(() => {
+  const baseData = props.paymentMethodTotals && props.paymentMethodTotals.length > 0
+    ? props.paymentMethodTotals.map((item) => ({
+        payment_type: Number(item.payment_type),
+        label: item.label,
+        total: Number(item.total || 0),
+      }))
+    : [
+    {
+      payment_type: 0,
+      label: "Cash",
+      total: Number(props.totalCash || 0),
+    },
+    {
+      payment_type: 1,
+      label: "Card",
+      total: Number(props.totalCard || 0),
+    },
+    {
+      payment_type: 2,
+      label: "Credit",
+      total: 0,
+    },
+  ];
+
+  const totalSum = baseData.reduce((sum, item) => sum + item.total, 0);
+
+  return baseData.map((item) => ({
+    ...item,
+    formatted_total: item.total.toFixed(2),
+    percentage: totalSum > 0 ? (item.total / totalSum) * 100 : 0,
+  }));
+});
+
+const donutRadius = 44;
+const donutCircumference = 2 * Math.PI * donutRadius;
+
+const totalPaymentAmount = computed(() => {
+  return normalizedPaymentTotals.value.reduce((sum, item) => sum + item.total, 0);
+});
+
+const donutSegments = computed(() => {
+  let cumulativeRatio = 0;
+
+  return normalizedPaymentTotals.value.map((item) => {
+    const ratio = totalPaymentAmount.value > 0 ? item.total / totalPaymentAmount.value : 0;
+    const dash = ratio * donutCircumference;
+    const offset = -cumulativeRatio * donutCircumference;
+
+    cumulativeRatio += ratio;
+
+    return {
+      payment_type: item.payment_type,
+      dash,
+      offset,
+    };
+  });
+});
+
+const getPaymentStrokeColor = (type) => {
+  const colors = {
+    0: "#22c55e",
+    1: "#3b82f6",
+    2: "#f59e0b",
+  };
+  return colors[type] || "#6b7280";
+};
 
 const filterReports = () => {
   router.get(

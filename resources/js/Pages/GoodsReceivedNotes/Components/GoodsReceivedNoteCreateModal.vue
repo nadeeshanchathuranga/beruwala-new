@@ -68,6 +68,15 @@
             </div>
 
             <div>
+              <label class="block text-sm font-medium text-gray-700 mb-2">Supplier Due Date</label>
+              <input
+                v-model="form.supplier_due_date"
+                type="date"
+                class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            <div>
               <label class="block text-sm font-medium text-gray-700 mb-2"
                 >GRN Date <span class="text-red-500">*</span></label
               >
@@ -91,16 +100,23 @@
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-2">Discount({{ page.props.currency || '' }})</label>
-              <input
-                v-model.number="form.discount"
-                type="number"
-                step="0.01"
-                class="w-full px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              <label class="block text-sm font-medium text-gray-700 mb-2">Discount</label>
+              <div class="flex gap-2">
+                <select
+                  v-model="form.discount_type"
+                  class="w-44 px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="percentage">Percentage (%)</option>
+                  <option value="amount">Fixed Amount ({{ page.props.currency || '' }})</option>
+                </select>
+                <input
+                  v-model.number="form.discount"
+                  type="number"
+                  step="0.01"
+                  class="flex-1 px-3 py-2 text-sm text-gray-800 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
-
-            <div></div>
 
             <div>
               <label class="block text-sm font-medium text-gray-700 mb-2"
@@ -184,6 +200,7 @@
                         v-for="prod in availableProducts"
                         :key="prod.id"
                         :value="prod.id"
+                        :disabled="isProductSelectedInOtherRows(prod.id, index)"
                       >
                         {{ prod.name }}
                       </option>
@@ -310,10 +327,10 @@
                     colspan="6"
                     class="px-4 py-3 text-right font-semibold text-gray-900"
                   >
-                    Discount:
+                    Discount ({{ form.discount_type === 'percentage' ? '%' : (page.props.currency || '') }}):
                   </td>
                   <td class="px-4 py-3 font-semibold text-red-600">
-                    -{{ formatNumber(products.reduce((sum, p) => sum + (parseFloat(p.discount) || 0), 0)) }} ({{ page.props.currency || "" }})
+                    -{{ formatNumber(calculateEffectiveDiscount(products.reduce((sum, p) => sum + (parseFloat(p.total) || 0), 0))) }} ({{ page.props.currency || "" }})
                   </td>
                   <td></td>
                 </tr>
@@ -407,14 +424,21 @@ const createEmptyProductRow = () => ({
 const form = ref({
   goods_received_note_no: props.grnNumber,
   supplier_id: "",
+  supplier_due_date: "",
   goods_received_note_date: new Date().toISOString().split("T")[0],
   batch_number: "",
   discount: 0,
+  discount_type: "amount",
   tax_total: 0,
   remarks: "",
 });
 
 const products = ref([createEmptyProductRow()]);
+
+const floorToWhole = (value) => {
+  const numericValue = Number(value) || 0;
+  return Math.floor(numericValue);
+};
 
 const grandTotal = computed(() => {
   const productsTotal = products.value.reduce(
@@ -422,11 +446,21 @@ const grandTotal = computed(() => {
     0
   );
 
-  const discount = parseFloat(form.value.discount) || 0;
+  const discount = calculateEffectiveDiscount(productsTotal);
   const taxTotal = parseFloat(form.value.tax_total) || 0;
 
-  return productsTotal - discount + taxTotal;
+  return floorToWhole(productsTotal - discount + taxTotal);
 });
+
+const calculateEffectiveDiscount = (productsTotal) => {
+  const discountValue = parseFloat(form.value.discount) || 0;
+
+  if (form.value.discount_type === "percentage") {
+    return floorToWhole((productsTotal * discountValue) / 100);
+  }
+
+  return floorToWhole(discountValue);
+};
 
 // Generate auto batch number in format: BATCH-YYYYMMDD-XXXX
 const generateBatchNumber = () => {
@@ -451,9 +485,11 @@ const resetForm = () => {
   form.value = {
     goods_received_note_no: props.grnNumber,
     supplier_id: "",
+    supplier_due_date: "",
     goods_received_note_date: new Date().toISOString().split("T")[0],
     batch_number: generateBatchNumber(),
     discount: 0,
+    discount_type: "amount",
     tax_total: 0,
     remarks: "",
   };
@@ -462,6 +498,12 @@ const resetForm = () => {
 
 const onProductSelect = (index) => {
   const product = products.value[index];
+  if (isProductSelectedInOtherRows(product.product_id, index)) {
+    alert("This product is already added. Each product can be selected only once per GRN.");
+    products.value[index] = createEmptyProductRow();
+    return;
+  }
+
   const selectedProduct = props.availableProducts.find(
     (p) => p.id === product.product_id
   );
@@ -499,6 +541,14 @@ const removeProduct = (index) => {
   products.value.splice(index, 1);
 };
 
+const isProductSelectedInOtherRows = (productId, currentIndex) => {
+  if (!productId) return false;
+
+  return products.value.some(
+    (row, rowIndex) => rowIndex !== currentIndex && Number(row.product_id) === Number(productId)
+  );
+};
+
 const calculateTotal = (index) => {
   const p = products.value[index];
   // Use issued_quantity for GRN line totals (actual received amount), fallback to requested_quantity
@@ -506,13 +556,13 @@ const calculateTotal = (index) => {
   const price = parseFloat(p.purchase_price) || 0;
   const discount = parseFloat(p.discount) || 0;
 
-  p.total = qty * price - discount;
+  p.total = floorToWhole(qty * price - discount);
 };
 
 const formatNumber = (number) => {
-  return parseFloat(number || 0).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  return floorToWhole(number).toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
 };
 
@@ -548,6 +598,12 @@ const submitForm = () => {
     return;
   }
 
+  const selectedProductIds = validProducts.map((product) => Number(product.product_id));
+  if (new Set(selectedProductIds).size !== selectedProductIds.length) {
+    alert("Duplicate products are not allowed. Please keep each product only once per GRN.");
+    return;
+  }
+
   const subtotal = validProducts.reduce(
     (sum, product) => sum + (parseFloat(product.total) || 0),
     0
@@ -555,7 +611,7 @@ const submitForm = () => {
 
   const payload = {
     ...form.value,
-    subtotal: subtotal,
+    subtotal: floorToWhole(subtotal),
     products: validProducts,
   };
 

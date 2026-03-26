@@ -17,6 +17,7 @@ use App\Models\Quotation;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class SaleController extends Controller
 {
@@ -115,7 +116,16 @@ class SaleController extends Controller
             'payments' => 'required|array|min:1',
             'payments.*.payment_type' => 'required|in:0,1,2',
             'payments.*.amount' => 'required|numeric|min:0',
+            'payments.*.card_type' => 'nullable|in:visa,mastercard',
         ]);
+
+        foreach ($request->payments as $index => $payment) {
+            if ((int) ($payment['payment_type'] ?? -1) === 1 && empty($payment['card_type'])) {
+                return back()
+                    ->withErrors(["payments.$index.card_type" => 'Card type is required for card payments.'])
+                    ->withInput();
+            }
+        }
 
 
 
@@ -143,7 +153,7 @@ class SaleController extends Controller
                 'invoice_no' => $request->invoice_no,
                 'type' => $type,
                 'customer_id' => $request->customer_id ?: null,
-                'user_id' => auth()->id(),
+                'user_id' => Auth::id(),
                 'total_amount' => $totalAmount,
                 'discount' => $discount,
                 'net_amount' => $netAmount,
@@ -200,12 +210,17 @@ class SaleController extends Controller
 
             // Create a single income record for the actual sale amount (not payment amount)
             // This ensures accurate income reporting when payments exceed sale amount
+            $primaryPayment = $request->payments[0] ?? [];
+
             Income::create([
                 'sale_id' => $sale->id,
                 'source' => 'Sale - ' . $sale->invoice_no,
                 'amount' => $sale->net_amount, // Actual sale amount after discount
                 'income_date' => $request->sale_date,
-                'payment_type' => $request->payments[0]['payment_type'] ?? 0, // Primary payment method
+                'payment_type' => $primaryPayment['payment_type'] ?? 0, // Primary payment method
+                'card_type' => ((int) ($primaryPayment['payment_type'] ?? -1) === 1)
+                    ? ($primaryPayment['card_type'] ?? null)
+                    : null,
                 'transaction_type' => 'sale',
             ]);
 

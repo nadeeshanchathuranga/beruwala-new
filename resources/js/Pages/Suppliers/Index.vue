@@ -33,6 +33,7 @@
               <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Name</th>
               <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Email</th>
               <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Phone</th>
+              <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Due Date</th>
               <th class="px-4 py-3 text-blue-600 font-semibold text-sm text-right">Due Payment</th>
               <th class="px-4 py-3 text-blue-600 font-semibold text-sm text-center">Status</th>
               <th class="px-4 py-3 text-blue-600 font-semibold text-sm text-center">Actions</th>
@@ -64,6 +65,10 @@
               <!-- Phone -->
               <td class="px-4 py-4">
                 <div class="text-sm text-gray-700">{{ supplier.phone_number || '-' }}</div>
+              </td>
+              <!-- Due Date -->
+              <td class="px-4 py-4">
+                <div class="text-sm text-gray-700">{{ formatDate(supplier.due_date) }}</div>
               </td>
               <!-- Due Payment -->
               <td class="px-4 py-4 text-right">
@@ -106,7 +111,7 @@
               </tr>
             <!-- Empty State Message -->
             <tr v-if="!suppliers.data || suppliers.data.length === 0">
-              <td colspan="6" class="px-6 py-8 text-center text-gray-500 font-medium">
+              <td colspan="8" class="px-6 py-8 text-center text-gray-500 font-medium">
                 No suppliers found
               </td>
             </tr>
@@ -188,6 +193,15 @@ const formatCurrency = (value) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value || 0);
+};
+
+const formatDate = (dateValue) => {
+  if (!dateValue) return "-";
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleDateString("en-CA");
 };
 
 </script>
