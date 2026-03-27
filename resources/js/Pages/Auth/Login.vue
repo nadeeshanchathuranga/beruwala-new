@@ -30,7 +30,7 @@ const togglePasswordVisibility = () => {
 };
 
 const submit = () => {
-  form.post(route("login"), {
+  form.post(route("login", undefined, false), {
     onFinish: () => form.reset("password"),
   });
 };
