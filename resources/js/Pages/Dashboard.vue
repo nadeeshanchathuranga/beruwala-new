@@ -367,7 +367,17 @@ onMounted(() => {
           >
             <div class="text-4xl mb-3">⏰</div>
             <div class="font-semibold text-lg text-gray-800 mb-1">Shifts</div>
-            <div class="text-sm text-gray-600">Manage cashier shifts and till movement</div>
+            <div class="text-sm text-gray-600">Manage cashier start/end sessions</div>
+          </Link>
+
+          <Link
+            v-if="[0, 1, 2].includes($page.props.auth.user.role)"
+            :href="route('till.index')"
+            class="group bg-white hover:bg-gray-50 p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-all duration-200"
+          >
+            <div class="text-4xl mb-3">💵</div>
+            <div class="font-semibold text-lg text-gray-800 mb-1">Till</div>
+            <div class="text-sm text-gray-600">Record cash in/out with controls</div>
           </Link>
 
           <Link
