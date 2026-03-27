@@ -14,12 +14,46 @@
           <h1 class="text-3xl font-bold text-gray-900">Shift Management</h1>
         </div>
 
-        <Link
-          :href="route('shifts.create')"
-          class="px-6 py-2.5 rounded-[5px] font-medium text-sm bg-blue-600 hover:bg-blue-700 text-white transition-all duration-200"
-        >
-          + Start New Shift
-        </Link>
+        <div class="flex items-center gap-2">
+          <Link
+            :href="route('till.index')"
+            class="px-6 py-2.5 rounded-[5px] font-medium text-sm bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200"
+          >
+            Till Management
+          </Link>
+          <Link
+            :href="route('shifts.create')"
+            class="px-6 py-2.5 rounded-[5px] font-medium text-sm bg-blue-600 hover:bg-blue-700 text-white transition-all duration-200"
+          >
+            Start Shift
+          </Link>
+        </div>
+      </div>
+
+      <div
+        v-if="activeShift"
+        class="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+      >
+        <div>
+          <div class="text-sm text-blue-700">Current Active Shift</div>
+          <div class="text-lg font-semibold text-blue-900">
+            Started {{ formatDateTime(activeShift.start_time) }} with {{ formatMoney(activeShift.start_amount) }}
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <Link
+            :href="route('shifts.show', activeShift.id)"
+            class="px-4 py-2 text-sm font-medium rounded-[5px] bg-blue-600 text-white hover:bg-blue-700"
+          >
+            View
+          </Link>
+          <Link
+            :href="route('shifts.edit', activeShift.id)"
+            class="px-4 py-2 text-sm font-medium rounded-[5px] bg-red-600 text-white hover:bg-red-700"
+          >
+            End Shift
+          </Link>
+        </div>
       </div>
 
       <div class="bg-white rounded-2xl border border-gray-200 p-5 mb-4">
@@ -39,6 +73,11 @@
             <option value="open">Open</option>
             <option value="closed">Closed</option>
           </select>
+
+          <label class="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input v-model="filterForm.mine" type="checkbox" class="rounded border-gray-300" />
+            Show only my shifts
+          </label>
 
           <div class="flex gap-2">
             <button
@@ -67,7 +106,7 @@
                 <th class="px-4 py-3 text-blue-600 font-semibold text-sm">Start</th>
                 <th class="px-4 py-3 text-blue-600 font-semibold text-sm">End</th>
                 <th class="px-4 py-3 text-blue-600 font-semibold text-sm text-right">Start Amt</th>
-                <th class="px-4 py-3 text-blue-600 font-semibold text-sm text-right">Sales</th>
+                <th class="px-4 py-3 text-blue-600 font-semibold text-sm text-right">Expected</th>
                 <th class="px-4 py-3 text-blue-600 font-semibold text-sm text-center">Status</th>
                 <th class="px-4 py-3 text-blue-600 font-semibold text-sm text-center">Actions</th>
               </tr>
@@ -85,7 +124,7 @@
                 <td class="px-4 py-3 text-sm text-gray-700">{{ formatDateTime(shift.start_time) }}</td>
                 <td class="px-4 py-3 text-sm text-gray-700">{{ shift.end_time ? formatDateTime(shift.end_time) : '-' }}</td>
                 <td class="px-4 py-3 text-sm text-gray-700 text-right">{{ formatMoney(shift.start_amount) }}</td>
-                <td class="px-4 py-3 text-sm text-gray-700 text-right">{{ formatMoney(shift.total_sales || 0) }}</td>
+                <td class="px-4 py-3 text-sm text-gray-700 text-right">{{ formatMoney(shift.expected_cash || 0) }}</td>
                 <td class="px-4 py-3 text-center">
                   <span
                     :class="shift.status === 'open'
@@ -104,12 +143,14 @@
                       Show
                     </Link>
                     <Link
+                      v-if="shift.status === 'open'"
                       :href="route('shifts.edit', shift.id)"
-                      class="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-[5px] hover:bg-blue-700"
+                      class="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-[5px] hover:bg-red-700"
                     >
-                      Edit
+                      End
                     </Link>
                     <button
+                      v-if="shift.status === 'closed'"
                       @click="deleteShift(shift.id)"
                       class="px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-[5px] hover:bg-red-700"
                     >
@@ -169,11 +210,16 @@ const props = defineProps({
     type: Object,
     default: () => ({}),
   },
+  activeShift: {
+    type: Object,
+    default: null,
+  },
 });
 
 const filterForm = reactive({
   search: props.filters?.search || "",
   status: props.filters?.status || "",
+  mine: !!props.filters?.mine,
 });
 
 const applyFilters = () => {
@@ -186,6 +232,7 @@ const applyFilters = () => {
 const resetFilters = () => {
   filterForm.search = "";
   filterForm.status = "";
+  filterForm.mine = false;
   applyFilters();
 };
 

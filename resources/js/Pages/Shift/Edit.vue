@@ -1,5 +1,5 @@
 <template>
-  <Head title="Edit Shift" />
+  <Head title="End Shift" />
 
   <AppLayout>
     <div class="min-h-screen bg-gray-50 p-6">
@@ -11,71 +11,34 @@
           >
             ← Back
           </Link>
-          <h1 class="text-3xl font-bold text-gray-900">Edit Shift #{{ shift.id }}</h1>
+          <h1 class="text-3xl font-bold text-gray-900">End Shift #{{ shift.id }}</h1>
         </div>
 
         <form @submit.prevent="submit" class="bg-white rounded-2xl border border-gray-200 p-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p class="text-xs text-gray-500">Opening Cash</p>
+              <p class="text-xl font-semibold text-gray-900">{{ formatMoney(shift.start_amount) }}</p>
+            </div>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p class="text-xs text-gray-500">Sales Total</p>
+              <p class="text-xl font-semibold text-gray-900">{{ formatMoney(summary.sales_total) }}</p>
+            </div>
+            <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <p class="text-xs text-gray-500">Cash In / Cash Out</p>
+              <p class="text-xl font-semibold text-gray-900">
+                {{ formatMoney(summary.cash_in) }} / {{ formatMoney(summary.cash_out) }}
+              </p>
+            </div>
+            <div class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <p class="text-xs text-blue-700">Expected Closing Cash</p>
+              <p class="text-xl font-semibold text-blue-900">{{ formatMoney(summary.expected_cash) }}</p>
+            </div>
+          </div>
+
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">User</label>
-              <select
-                v-model="form.user_id"
-                class="w-full border border-gray-300 rounded-[5px] px-3 py-2 text-sm"
-              >
-                <option value="">Select user</option>
-                <option v-for="user in users" :key="user.id" :value="user.id">
-                  {{ user.name }}
-                </option>
-              </select>
-              <p v-if="form.errors.user_id" class="mt-1 text-xs text-red-600">{{ form.errors.user_id }}</p>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select
-                v-model="form.status"
-                class="w-full border border-gray-300 rounded-[5px] px-3 py-2 text-sm"
-              >
-                <option value="open">Open</option>
-                <option value="closed">Closed</option>
-              </select>
-              <p v-if="form.errors.status" class="mt-1 text-xs text-red-600">{{ form.errors.status }}</p>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-              <input
-                v-model="form.start_time"
-                type="datetime-local"
-                class="w-full border border-gray-300 rounded-[5px] px-3 py-2 text-sm"
-              />
-              <p v-if="form.errors.start_time" class="mt-1 text-xs text-red-600">{{ form.errors.start_time }}</p>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-              <input
-                v-model="form.end_time"
-                type="datetime-local"
-                class="w-full border border-gray-300 rounded-[5px] px-3 py-2 text-sm"
-              />
-              <p v-if="form.errors.end_time" class="mt-1 text-xs text-red-600">{{ form.errors.end_time }}</p>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Start Amount</label>
-              <input
-                v-model="form.start_amount"
-                type="number"
-                min="0"
-                step="0.01"
-                class="w-full border border-gray-300 rounded-[5px] px-3 py-2 text-sm"
-              />
-              <p v-if="form.errors.start_amount" class="mt-1 text-xs text-red-600">{{ form.errors.start_amount }}</p>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">End Amount</label>
+              <label class="block text-sm font-medium text-gray-700 mb-1">Counted Closing Cash</label>
               <input
                 v-model="form.end_amount"
                 type="number"
@@ -86,36 +49,29 @@
               <p v-if="form.errors.end_amount" class="mt-1 text-xs text-red-600">{{ form.errors.end_amount }}</p>
             </div>
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Total Sales</label>
-              <input
-                v-model="form.total_sales"
-                type="number"
-                min="0"
-                step="0.01"
-                class="w-full border border-gray-300 rounded-[5px] px-3 py-2 text-sm"
-              />
-              <p v-if="form.errors.total_sales" class="mt-1 text-xs text-red-600">{{ form.errors.total_sales }}</p>
+            <div class="rounded-lg border p-4" :class="varianceClass">
+              <p class="text-xs" :class="varianceTextClass">Projected Variance</p>
+              <p class="text-xl font-semibold" :class="varianceTextClass">{{ varianceLabel }}</p>
             </div>
           </div>
 
           <div class="mt-4">
-            <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Closing Notes (Optional)</label>
             <textarea
-              v-model="form.notes"
+              v-model="form.closing_notes"
               rows="3"
               class="w-full border border-gray-300 rounded-[5px] px-3 py-2 text-sm"
             ></textarea>
-            <p v-if="form.errors.notes" class="mt-1 text-xs text-red-600">{{ form.errors.notes }}</p>
+            <p v-if="form.errors.closing_notes" class="mt-1 text-xs text-red-600">{{ form.errors.closing_notes }}</p>
           </div>
 
           <div class="mt-6 flex gap-3">
             <button
               type="submit"
               :disabled="form.processing"
-              class="px-6 py-2.5 rounded-[5px] bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-60"
+              class="px-6 py-2.5 rounded-[5px] bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-60"
             >
-              {{ form.processing ? "Updating..." : "Update Shift" }}
+              {{ form.processing ? "Ending..." : "End Shift" }}
             </button>
             <Link
               :href="route('shifts.show', shift.id)"
@@ -131,6 +87,7 @@
 </template>
 
 <script setup>
+import { computed } from "vue";
 import { Head, Link, useForm } from "@inertiajs/vue3";
 
 const props = defineProps({
@@ -138,37 +95,55 @@ const props = defineProps({
     type: Object,
     required: true,
   },
-  users: {
-    type: Array,
-    default: () => [],
+  summary: {
+    type: Object,
+    required: true,
   },
 });
 
-const toDateTimeLocal = (value) => {
-  if (!value) {
-    return "";
+const form = useForm({
+  end_amount: props.shift.end_amount || "",
+  closing_notes: props.shift.closing_notes || "",
+});
+
+const varianceValue = computed(() => {
+  const entered = Number(form.end_amount || 0);
+  const expected = Number(props.summary?.expected_cash || 0);
+  return entered - expected;
+});
+
+const varianceLabel = computed(() => {
+  const variance = varianceValue.value;
+
+  if (variance > 0) {
+    return `Excess: ${formatMoney(variance)}`;
   }
 
-  const date = new Date(value);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
+  if (variance < 0) {
+    return `Short: ${formatMoney(Math.abs(variance))}`;
+  }
 
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
-
-const form = useForm({
-  user_id: props.shift.user_id || "",
-  start_time: toDateTimeLocal(props.shift.start_time),
-  start_amount: props.shift.start_amount || "0.00",
-  end_time: toDateTimeLocal(props.shift.end_time),
-  end_amount: props.shift.end_amount || "",
-  total_sales: props.shift.total_sales || "0.00",
-  notes: props.shift.notes || "",
-  status: props.shift.status || "open",
+  return "Balanced: 0.00";
 });
+
+const varianceClass = computed(() => {
+  if (varianceValue.value > 0) return "border-green-200 bg-green-50";
+  if (varianceValue.value < 0) return "border-red-200 bg-red-50";
+  return "border-gray-200 bg-gray-50";
+});
+
+const varianceTextClass = computed(() => {
+  if (varianceValue.value > 0) return "text-green-700";
+  if (varianceValue.value < 0) return "text-red-700";
+  return "text-gray-700";
+});
+
+const formatMoney = (value) => {
+  return Number(value || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+};
 
 const submit = () => {
   form.put(route("shifts.update", props.shift.id));

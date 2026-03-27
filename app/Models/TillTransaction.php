@@ -16,7 +16,14 @@ class TillTransaction extends Model
         'amount',
     ];
 
-  
+    protected $casts = [
+        'amount' => 'decimal:2',
+    ];
+
+    public function scopeForShift($query, int $shiftId)
+    {
+        return $query->where('shift_id', $shiftId);
+    }
 
     public function shift()
     {

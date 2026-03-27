@@ -15,15 +15,24 @@
             <h1 class="text-3xl font-bold text-gray-900">Shift #{{ shift.id }}</h1>
           </div>
 
-          <Link
-            :href="route('shifts.edit', shift.id)"
-            class="px-6 py-2.5 rounded-[5px] font-medium text-sm bg-blue-600 hover:bg-blue-700 text-white transition-all duration-200"
-          >
-            Edit Shift
-          </Link>
+          <div class="flex gap-2">
+            <Link
+              :href="route('till.index')"
+              class="px-6 py-2.5 rounded-[5px] font-medium text-sm bg-emerald-600 hover:bg-emerald-700 text-white transition-all duration-200"
+            >
+              Till
+            </Link>
+            <Link
+              v-if="isCurrentUsersOpenShift"
+              :href="route('shifts.edit', shift.id)"
+              class="px-6 py-2.5 rounded-[5px] font-medium text-sm bg-red-600 hover:bg-red-700 text-white transition-all duration-200"
+            >
+              End Shift
+            </Link>
+          </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
           <div class="bg-white border border-gray-200 rounded-xl p-4">
             <div class="text-xs text-gray-500">Cash In</div>
             <div class="text-2xl font-bold text-green-600">{{ formatMoney(summary.cash_in) }}</div>
@@ -35,6 +44,10 @@
           <div class="bg-white border border-gray-200 rounded-xl p-4">
             <div class="text-xs text-gray-500">Net</div>
             <div class="text-2xl font-bold text-blue-600">{{ formatMoney(summary.net) }}</div>
+          </div>
+          <div class="bg-white border border-gray-200 rounded-xl p-4">
+            <div class="text-xs text-gray-500">Expected Cash</div>
+            <div class="text-2xl font-bold text-indigo-600">{{ formatMoney(summary.expected_cash) }}</div>
           </div>
           <div class="bg-white border border-gray-200 rounded-xl p-4">
             <div class="text-xs text-gray-500">Transactions</div>
@@ -82,11 +95,24 @@
               <p class="text-gray-500">Total Sales</p>
               <p class="font-medium text-gray-900">{{ formatMoney(shift.total_sales) }}</p>
             </div>
+            <div>
+              <p class="text-gray-500">Expected Cash</p>
+              <p class="font-medium text-gray-900">{{ formatMoney(shift.expected_cash || summary.expected_cash) }}</p>
+            </div>
+            <div>
+              <p class="text-gray-500">Variance</p>
+              <p class="font-medium" :class="varianceTextClass">{{ varianceLabel }}</p>
+            </div>
           </div>
 
           <div class="mt-4" v-if="shift.notes">
             <p class="text-gray-500 text-sm">Notes</p>
             <p class="text-gray-800 mt-1">{{ shift.notes }}</p>
+          </div>
+
+          <div class="mt-4" v-if="shift.closing_notes">
+            <p class="text-gray-500 text-sm">Closing Notes</p>
+            <p class="text-gray-800 mt-1">{{ shift.closing_notes }}</p>
           </div>
         </div>
 
@@ -142,9 +168,10 @@
 </template>
 
 <script setup>
-import { Head, Link } from "@inertiajs/vue3";
+import { computed, onMounted } from "vue";
+import { Head, Link, usePage } from "@inertiajs/vue3";
 
-defineProps({
+const props = defineProps({
   shift: {
     type: Object,
     required: true,
@@ -153,6 +180,43 @@ defineProps({
     type: Object,
     required: true,
   },
+  isCurrentUsersOpenShift: {
+    type: Boolean,
+    default: false,
+  },
+});
+
+const page = usePage();
+
+const varianceValue = computed(() => {
+  if (props.shift.variance_amount === null || props.shift.variance_amount === undefined) {
+    return null;
+  }
+
+  return Number(props.shift.variance_amount);
+});
+
+const varianceLabel = computed(() => {
+  if (varianceValue.value === null) {
+    return "-";
+  }
+
+  if (varianceValue.value > 0) {
+    return `Excess ${formatMoney(varianceValue.value)}`;
+  }
+
+  if (varianceValue.value < 0) {
+    return `Short ${formatMoney(Math.abs(varianceValue.value))}`;
+  }
+
+  return "Balanced 0.00";
+});
+
+const varianceTextClass = computed(() => {
+  if (varianceValue.value === null) return "text-gray-900";
+  if (varianceValue.value > 0) return "text-green-700";
+  if (varianceValue.value < 0) return "text-red-700";
+  return "text-gray-900";
 });
 
 const formatDateTime = (value) => {
@@ -173,4 +237,18 @@ const formatMoney = (value) => {
     maximumFractionDigits: 2,
   });
 };
+
+onMounted(() => {
+  const shiftEvent = page.props?.flash?.shift_event;
+
+  if (!shiftEvent || !shiftEvent.type) {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(`shift:${shiftEvent.type}`, {
+      detail: shiftEvent,
+    })
+  );
+});
 </script>
