@@ -33,6 +33,7 @@ use App\Http\Controllers\StockTransferReturnReportController;
 use App\Http\Controllers\BackupController;
 use App\Http\Controllers\ImportExportController;
 use App\Http\Controllers\ExcelController;
+use App\Http\Controllers\ShiftController;
 
 /*
 |--------------------------------------------------------------------------
@@ -195,7 +196,7 @@ Route::middleware(['auth', 'role:0,1,3'])->group(function () {
     Route::patch('/products/{product}/shop-sales-data', [ProductController::class, 'updateShopSalesData'])->name('products.shop-sales-data');
     Route::post('products/{product}/duplicate', [ProductController::class, 'duplicate'])->name('products.duplicate');
     Route::post('products/log-activity', [ProductController::class, 'logActivity'])->name('products.log-activity');
-    
+
     // Product resource routes
     Route::resource('products', ProductController::class, ['only' => ['index', 'store', 'update', 'destroy']]);
     Route::resource('categories', CategoryController::class, ['only' => ['index', 'store', 'update', 'destroy']]);
@@ -234,6 +235,9 @@ Route::middleware(['auth', 'role:0,3,4'])->group(function () {
 Route::middleware(['auth', 'role:0,1,2'])->group(function () {
     // Sales Management
     Route::resource('sales', SaleController::class, ['only' => ['index', 'store', 'update', 'destroy']]);
+
+    // Shift Management
+    Route::resource('shifts', ShiftController::class);
 });
 
 /*
