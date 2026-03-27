@@ -34,6 +34,7 @@ use App\Http\Controllers\BackupController;
 use App\Http\Controllers\ImportExportController;
 use App\Http\Controllers\ExcelController;
 use App\Http\Controllers\ShiftController;
+use App\Http\Controllers\TillManagementController;
 
 /*
 |--------------------------------------------------------------------------
@@ -238,6 +239,10 @@ Route::middleware(['auth', 'role:0,1,2'])->group(function () {
 
     // Shift Management
     Route::resource('shifts', ShiftController::class);
+
+    // Till Management
+    Route::get('till', [TillManagementController::class, 'index'])->name('till.index');
+    Route::post('till', [TillManagementController::class, 'store'])->name('till.store');
 });
 
 /*

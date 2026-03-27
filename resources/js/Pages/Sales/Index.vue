@@ -26,6 +26,20 @@
           </div>
         </div>
 
+        <div
+          v-if="!activeShift"
+          class="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+        >
+          No active shift found for your user. Start a shift before processing sales.
+          <button
+            type="button"
+            @click="router.visit(route('shifts.create'))"
+            class="ml-2 inline-flex items-center rounded-[5px] bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+          >
+            Start Shift
+          </button>
+        </div>
+
         <!-- Quotation Selector - Convert Quotation to Sale -->
         <div
           v-if="quotations && quotations.length > 0"
@@ -1040,7 +1054,13 @@ const props = defineProps({
   discounts: Array,
   billSetting: Object,
   quotations: Array,
+  activeShift: {
+    type: Object,
+    default: null,
+  },
 });
+
+const activeShift = computed(() => props.activeShift);
 
 // Only show active customers (status == '1' or 1)
 const activeCustomers = computed(() => {
@@ -1182,13 +1202,13 @@ const totalAmount = computed(() => {
 
 // Total product discounts applied
 const totalProductDiscount = computed(() => {
-  
-  const result = form.items.reduce((sum, item, index) => {    
+
+  const result = form.items.reduce((sum, item, index) => {
     if (item.discountApplied && item.originalPrice) {
       const itemDiscount = (item.originalPrice - item.price) * item.quantity;
       return sum + itemDiscount;
     }
-    
+
     return sum;
   }, 0);
   return result;
@@ -1312,14 +1332,14 @@ const addByBarcode = () => {
 const addToCart = (product) => {
   // Check if product is already in cart
   const existingIndex = form.items.findIndex((item) => item.product_id === product.id);
-  
+
   if (existingIndex !== -1) {
     // Product already in cart - remove it (toggle)
     form.items.splice(existingIndex, 1);
   } else {
     // Product not in cart - add it
     const price = getCurrentPrice(product);
-    
+
     form.items.push({
       product_id: product.id,
       product_name: product.name,
@@ -1627,6 +1647,11 @@ const updateCartPrices = () => {
 
 // Submit sale with multiple payments
 const submitSale = () => {
+  if (!activeShift.value) {
+    alert("Start a shift before processing sales.");
+    return;
+  }
+
   if (form.items.length === 0) {
     alert("Please add items to cart");
     return;
@@ -2060,68 +2085,68 @@ const printAndClose = () => {
 // Keyboard shortcuts
 const handleKeyDown = (event) => {
   // Check if F8 is pressed using multiple methods
-  const isF8 = event.key === 'F8' || 
-               event.keyCode === 119 || 
+  const isF8 = event.key === 'F8' ||
+               event.keyCode === 119 ||
                event.code === 'F8';
-  
+
   // Check if F9 is pressed using multiple methods
-  const isF9 = event.key === 'F9' || 
-               event.keyCode === 120 || 
+  const isF9 = event.key === 'F9' ||
+               event.keyCode === 120 ||
                event.code === 'F9';
-  
+
   // Check if ESC is pressed
-  const isESC = event.key === 'Escape' || 
-                event.keyCode === 27 || 
+  const isESC = event.key === 'Escape' ||
+                event.keyCode === 27 ||
                 event.code === 'Escape';
-  
+
   if (isF8) {
     // Completely prevent default and stop propagation
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
-    
+
     // Don't trigger if user is actively typing in form fields (except barcode field)
     const activeElement = document.activeElement;
     const isInputField = ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement?.tagName);
     const isBarcodeField = activeElement === barcodeField.value;
-    
+
     if ((!isInputField || isBarcodeField) && form.items.length > 0) {
       clearCart();
     }
-    
+
     return false;
   }
-  
+
   if (isF9) {
     // Completely prevent default and stop propagation
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
-    
+
     // Don't trigger if user is actively typing in form fields (except barcode field)
     const activeElement = document.activeElement;
     const isInputField = ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeElement?.tagName);
     const isBarcodeField = activeElement === barcodeField.value;
-    
+
     // Check if sale can be completed (has items and payments, not already processing)
     if ((!isInputField || isBarcodeField) && form.items.length > 0 && form.payments.length > 0 && !form.processing) {
       submitSale();
     }
-    
+
     return false;
   }
-  
+
   if (isESC) {
     // Prevent default ESC behavior
     event.preventDefault();
     event.stopPropagation();
-    
+
     // Focus the barcode field
     if (barcodeField.value) {
       barcodeField.value.focus();
       barcodeField.value.select();
     }
-    
+
     return false;
   }
 };

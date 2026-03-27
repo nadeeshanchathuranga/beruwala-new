@@ -24,6 +24,7 @@ class Sale extends Model
         'type',
         'customer_id',
         'user_id',
+        'shift_id',
         'total_amount',
         'discount',
         'net_amount',
@@ -43,6 +44,7 @@ class Sale extends Model
         'return_amount' => 'decimal:2',
         'balance' => 'decimal:2',
         'has_return' => 'boolean',
+        'shift_id' => 'integer',
     ];
 
     // Relationships
@@ -59,6 +61,11 @@ class Sale extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function shift()
+    {
+        return $this->belongsTo(Shift::class, 'shift_id');
     }
 
     // Relationship: Sale has one Income
@@ -81,7 +88,7 @@ class Sale extends Model
     /**
      * Calculate the effective net amount after applying approved returns
      * This considers partial returns with discounts properly
-     * 
+     *
      * @return float
      */
     public function getNetAmountAfterReturnsAttribute()
@@ -105,7 +112,7 @@ class Sale extends Model
     /**
      * Calculate the effective discount after returns
      * When items are returned, the proportional discount is also reduced
-     * 
+     *
      * @return float
      */
     public function getEffectiveDiscountAttribute()
@@ -121,7 +128,7 @@ class Sale extends Model
 
     /**
      * Calculate the effective total amount (before discount) after returns
-     * 
+     *
      * @return float
      */
     public function getEffectiveTotalAmountAttribute()
@@ -136,13 +143,13 @@ class Sale extends Model
 
     /**
      * Get a summary of return impact on this sale
-     * 
+     *
      * @return array
      */
     public function getReturnSummary()
     {
         $returns = $this->returns()->where('status', SalesReturn::STATUS_APPROVED)->get();
-        
+
         $totalReturned = $returns->sum(function ($return) {
             if ($return->return_type == SalesReturn::TYPE_CASH_RETURN) {
                 return (float) ($return->refund_amount ?? 0);
