@@ -55,7 +55,7 @@ onMounted(() => {
     <div class="min-h-screen bg-gray-50 p-6">
       <!-- Header -->
       <div class="mb-8">
-        <h1 class="text-4xl font-bold text-blue-600 mb-2">POS System Dashboard</h1>
+        <h1 class="text-4xl font-bold text-blue-600 mb-2">POS System Dashboard1</h1>
         <p class="text-gray-600">Manage your products, stores, and shops</p>
       </div>
 
